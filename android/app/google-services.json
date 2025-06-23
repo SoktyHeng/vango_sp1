@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "735888507369",
+    "project_id": "fir-vango-9e387",
+    "storage_bucket": "fir-vango-9e387.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:735888507369:android:a29f493ffe9463b0310b78",
+        "android_client_info": {
+          "package_name": "com.example.van_go"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAlFdnWc0kOrmwj7wwguY2qrWCegkoFpuc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

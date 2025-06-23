@@ -33,7 +33,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[300],
+      backgroundColor: Color.fromRGBO(207, 207, 232, 1),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -123,7 +123,7 @@ class _LoginPageState extends State<LoginPage> {
                         child: Text(
                           'Forgot Password?',
                           style: TextStyle(
-                            color: Colors.blue,
+                            color: Color.fromRGBO(49, 49, 120, 1),
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -149,7 +149,7 @@ class _LoginPageState extends State<LoginPage> {
                       child: Container(
                         padding: EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: Color.fromRGBO(85, 94, 109, 1),
+                          color: Color.fromRGBO(78,78, 148, 1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Center(
@@ -182,7 +182,7 @@ class _LoginPageState extends State<LoginPage> {
                       child: Text(
                         'Register now',
                         style: TextStyle(
-                          color: Colors.blue,
+                          color: Color.fromRGBO(49, 49, 120, 1),
                           fontWeight: FontWeight.bold,
                         ),
                       ),
