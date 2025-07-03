@@ -1,3 +1,4 @@
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -23,7 +24,10 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> fetchUserData() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
-    final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .get();
     if (doc.exists && mounted) {
       setState(() {
         userData = doc.data();
@@ -43,7 +47,7 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(20.0),
           child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.start,
@@ -55,7 +59,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const EditProfilePage()),
+                        MaterialPageRoute(
+                          builder: (context) => const EditProfilePage(),
+                        ),
                       ).then((_) {
                         setState(() {
                           isLoading = true;
@@ -68,10 +74,14 @@ class _ProfilePageState extends State<ProfilePage> {
                 const SizedBox(height: 20),
                 CircleAvatar(
                   radius: 50,
-                  backgroundImage: imageUrl != null ? NetworkImage(imageUrl) : null,
-                  child: imageUrl == null ? const Icon(Icons.person, size: 50) : null,
+                  backgroundImage: imageUrl != null
+                      ? NetworkImage(imageUrl)
+                      : null,
+                  child: imageUrl == null
+                      ? const Icon(Icons.person, size: 50)
+                      : null,
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 20),
                 Text(
                   userData?['name'] ?? '',
                   style: GoogleFonts.roboto(
@@ -79,26 +89,93 @@ class _ProfilePageState extends State<ProfilePage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 20),
                 Text(
                   userData?['email'] ?? '',
                   style: GoogleFonts.roboto(fontSize: 18),
                 ),
-                const SizedBox(height: 30),
+                const SizedBox(height: 20),
                 Text(
                   "Phone: ${userData?['phone number'] ?? 'N/A'}",
                   style: GoogleFonts.roboto(fontSize: 16),
                 ),
-                const SizedBox(height: 50),
-                MaterialButton(
-                  onPressed: () {
-                    FirebaseAuth.instance.signOut();
-                  },
-                  color: const Color.fromRGBO(85, 94, 109, 1),
-                  child: const Text(
-                    'Sign Out',
-                    style: TextStyle(color: Colors.white),
-                  ),
+                Spacer(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        FirebaseAuth.instance.signOut();
+                      },
+                      child: Text(
+                        'Sign Out',
+                        style: GoogleFonts.roboto(
+                          fontSize: 16,
+                          color: const Color.fromRGBO(78, 78, 148, 1),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 25),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) {
+                            return AlertDialog(
+                              title: const Text('Delete Account'),
+                              content: const Text(
+                                'Are you sure you want to delete your account?',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.of(context).pop();
+                                  },
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () async {
+                                    final uid =
+                                        FirebaseAuth.instance.currentUser!.uid;
+                                    final imageRef = FirebaseStorage.instance
+                                        .ref()
+                                        .child('profile_images/$uid.jpg');
+                                    await imageRef.delete();
+                                    await FirebaseFirestore.instance
+                                        .collection('users')
+                                        .doc(uid)
+                                        .delete();
+                                    await FirebaseAuth.instance.currentUser!
+                                        .delete();
+                                    if (!mounted) return;
+                                    Navigator.of(context).pop();
+                                    Navigator.of(
+                                      context,
+                                    ).popUntil((route) => route.isFirst);
+                                  },
+                                  child: const Text('Delete'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                      child: Text(
+                        'Delete Account',
+                        style: GoogleFonts.roboto(
+                          fontSize: 16,
+                          color: const Color.fromRGBO(78, 78, 148, 1),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

@@ -36,7 +36,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Future<void> _loadUserData() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
-    final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .get();
     if (doc.exists) {
       final data = doc.data()!;
       _nameController.text = data['name'] ?? '';
@@ -51,27 +54,31 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Future<void> _pickAndUploadImage() async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 50,
+    );
     if (pickedFile != null) {
       final uid = FirebaseAuth.instance.currentUser!.uid;
       final file = File(pickedFile.path);
-      final ref = FirebaseStorage.instance.ref().child('profile_images/$uid.jpg');
+      final ref = FirebaseStorage.instance.ref().child(
+        'profile_images/$uid.jpg',
+      );
       await ref.putFile(file);
       final downloadUrl = await ref.getDownloadURL();
 
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .update({'profileImage': downloadUrl});
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'profileImage': downloadUrl,
+      });
       if (!mounted) return;
       setState(() {
         _imageUrl = downloadUrl;
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile photo updated!')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Profile photo updated!')));
     }
   }
 
@@ -88,7 +95,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
         updates['phone number'] = _phoneController.text.trim();
       }
       if (updates.isNotEmpty) {
-        await FirebaseFirestore.instance.collection('users').doc(uid).update(updates);
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .update(updates);
       }
 
       final newPassword = _passwordController.text.trim();
@@ -103,7 +113,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
           if (!mounted) return;
           if (e.code == 'requires-recent-login') {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Please re-authenticate to change password.')),
+              const SnackBar(
+                content: Text('Please re-authenticate to change password.'),
+              ),
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -126,7 +138,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Edit Profile')),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(20.0),
         child: Form(
           key: _formKey,
           child: Column(
@@ -135,8 +147,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 children: [
                   CircleAvatar(
                     radius: 50,
-                    backgroundImage: _imageUrl != null ? NetworkImage(_imageUrl!) : null,
-                    child: _imageUrl == null ? const Icon(Icons.person, size: 50) : null,
+                    backgroundImage: _imageUrl != null
+                        ? NetworkImage(_imageUrl!)
+                        : null,
+                    child: _imageUrl == null
+                        ? const Icon(Icons.person, size: 50)
+                        : null,
                   ),
                   Positioned(
                     right: 0,
@@ -149,7 +165,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           color: const Color.fromRGBO(85, 94, 109, 1),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.edit, size: 18, color: Colors.white),
+                        child: const Icon(
+                          Icons.edit,
+                          size: 18,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -159,25 +179,32 @@ class _EditProfilePageState extends State<EditProfilePage> {
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'Name'),
-                validator: (value) => value == null || value.isEmpty ? 'Required' : null,
+                validator: (value) =>
+                    value == null || value.isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 10),
               TextFormField(
                 controller: _phoneController,
                 decoration: const InputDecoration(labelText: 'Phone Number'),
                 keyboardType: TextInputType.phone,
-                validator: (value) => value == null || value.isEmpty ? 'Required' : null,
+                validator: (value) =>
+                    value == null || value.isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 10),
               TextFormField(
                 controller: _passwordController,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: 'New Password (optional)'),
+                decoration: const InputDecoration(
+                  labelText: 'New Password (optional)',
+                ),
               ),
               const SizedBox(height: 50),
               MaterialButton(
                 onPressed: _saveChanges,
                 color: const Color.fromRGBO(78, 78, 148, 1),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 textColor: Colors.white,
                 minWidth: 150,
                 height: 50,
