@@ -35,12 +35,13 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
 
   @override
   Widget build(BuildContext context) {
-    String formattedDate = "${widget.date.day}/${widget.date.month}/${widget.date.year}";
+    String formattedDate =
+        "${widget.date.day}/${widget.date.month}/${widget.date.year}";
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text("Booking Summary"),
+        title: Text("Booking Summary", style: TextStyle(fontSize: 20)),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
         elevation: 0,
@@ -56,6 +57,7 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
               children: [
                 // Trip Details Card
                 Card(
+                  color: Colors.white,
                   elevation: 2,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -111,6 +113,7 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
 
                 // Price Breakdown Card
                 Card(
+                  color: Colors.white,
                   elevation: 2,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -181,6 +184,7 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
 
                 // Promo Code Card
                 Card(
+                  color: Colors.white,
                   elevation: 2,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -215,20 +219,17 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
                             hintText: "Enter promo code (optional)",
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: Colors.grey.shade300),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: Colors.grey.shade300),
+                              borderSide: BorderSide(
+                                color: Colors.grey.shade300,
+                              ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide(
-                                color: Colors.blue.shade400,
+                                color: Color.fromRGBO(78, 78, 148, 1),
                                 width: 2,
                               ),
                             ),
-                            // suffixIcon: Icon(Icons.card_giftcard, color: Colors.grey.shade500),
                             contentPadding: EdgeInsets.symmetric(
                               horizontal: 16,
                               vertical: 16,
@@ -247,91 +248,105 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
                   width: double.infinity,
                   height: 56,
                   child: ElevatedButton(
-                    onPressed: _isLoading ? null : () async {
-                      setState(() {
-                        _isLoading = true;
-                      });
+                    onPressed: _isLoading
+                        ? null
+                        : () async {
+                            setState(() {
+                              _isLoading = true;
+                            });
 
-                      try {
-                        final user = FirebaseAuth.instance.currentUser;
-                        final userId = user?.uid;
-                        final now = Timestamp.now();
+                            try {
+                              final user = FirebaseAuth.instance.currentUser;
+                              final userId = user?.uid;
+                              final now = Timestamp.now();
 
-                        final bookingData = {
-                          "from": widget.from,
-                          "to": widget.to,
-                          "date": "${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}",
-                          "time": widget.time,
-                          "selectedSeats": widget.selectedSeats,
-                          "pricePerSeat": widget.pricePerSeat,
-                          "totalPrice": widget.selectedSeats.length * widget.pricePerSeat,
-                          "passengerCount": widget.selectedSeats.length,
-                          "promoCode": _promoController.text.trim(),
-                          "userId": userId,
-                          "timestamp": now,
-                          "location": widget.location,
-                        };
+                              final bookingData = {
+                                "from": widget.from,
+                                "to": widget.to,
+                                "date":
+                                    "${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}",
+                                "time": widget.time,
+                                "selectedSeats": widget.selectedSeats,
+                                "pricePerSeat": widget.pricePerSeat,
+                                "totalPrice":
+                                    widget.selectedSeats.length *
+                                    widget.pricePerSeat,
+                                "passengerCount": widget.selectedSeats.length,
+                                "promoCode": _promoController.text.trim(),
+                                "userId": userId,
+                                "timestamp": now,
+                                "location": widget.location,
+                              };
 
-                        // Save booking
-                        await FirebaseFirestore.instance
-                            .collection('bookings')
-                            .add(bookingData);
+                              // Save booking
+                              await FirebaseFirestore.instance
+                                  .collection('bookings')
+                                  .add(bookingData);
 
-                        // Update schedule seatTaken
-                        final routeId = "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
-                        final scheduleQuery = await FirebaseFirestore.instance
-                            .collection('schedules')
-                            .where('routeId', isEqualTo: routeId)
-                            .where('date', isEqualTo: bookingData['date'])
-                            .where('time', isEqualTo: widget.time)
-                            .limit(1)
-                            .get();
+                              // Update schedule seatTaken
+                              final routeId =
+                                  "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
+                              final scheduleQuery = await FirebaseFirestore
+                                  .instance
+                                  .collection('schedules')
+                                  .where('routeId', isEqualTo: routeId)
+                                  .where('date', isEqualTo: bookingData['date'])
+                                  .where('time', isEqualTo: widget.time)
+                                  .limit(1)
+                                  .get();
 
-                        if (scheduleQuery.docs.isNotEmpty) {
-                          final scheduleDoc = scheduleQuery.docs.first;
-                          final docRef = scheduleDoc.reference;
+                              if (scheduleQuery.docs.isNotEmpty) {
+                                final scheduleDoc = scheduleQuery.docs.first;
+                                final docRef = scheduleDoc.reference;
 
-                          final currentTaken = List<int>.from(scheduleDoc['seatsTaken']);
-                          final updatedTaken = [...currentTaken, ...widget.selectedSeats];
+                                final currentTaken = List<int>.from(
+                                  scheduleDoc['seatsTaken'],
+                                );
+                                final updatedTaken = [
+                                  ...currentTaken,
+                                  ...widget.selectedSeats,
+                                ];
 
-                          await docRef.update({
-                            "seatsTaken": updatedTaken.toSet().toList(),
-                          });
-                        }
+                                await docRef.update({
+                                  "seatsTaken": updatedTaken.toSet().toList(),
+                                });
+                              }
 
-                        setState(() {
-                          _isLoading = false;
-                        });
+                              setState(() {
+                                _isLoading = false;
+                              });
 
-                        showDialog(
-                          context: context,
-                          builder: (_) => AlertDialog(
-                            title: Text("Booking Confirmed"),
-                            content: Text("Your booking has been saved."),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.popUntil(
-                                  context,
-                                  (route) => route.isFirst,
+                              showDialog(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: Text("Booking Confirmed"),
+                                  content: Text("Your booking has been saved."),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.popUntil(
+                                        context,
+                                        (route) => route.isFirst,
+                                      ),
+                                      child: Text("OK"),
+                                    ),
+                                  ],
                                 ),
-                                child: Text("OK"),
-                              ),
-                            ],
-                          ),
-                        );
-                      } catch (e) {
-                        setState(() {
-                          _isLoading = false;
-                        });
-                        
-                        print("Booking error: $e");
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text("Failed to save booking. Please try again."),
-                          ),
-                        );
-                      }
-                    },
+                              );
+                            } catch (e) {
+                              setState(() {
+                                _isLoading = false;
+                              });
+
+                              print("Booking error: $e");
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    "Failed to save booking. Please try again.",
+                                  ),
+                                ),
+                              );
+                            }
+                          },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Color.fromRGBO(78, 78, 148, 1),
                       foregroundColor: Colors.white,
@@ -346,12 +361,17 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
                             width: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             ),
                           )
                         : Text(
                             "Check Out",
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                   ),
                 ),

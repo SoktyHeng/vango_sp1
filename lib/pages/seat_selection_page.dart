@@ -64,8 +64,9 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text('Select Seat'),
+        title: Text('Select Seat', style: TextStyle(fontSize: 20)),
         centerTitle: true,
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,

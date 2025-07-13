@@ -136,7 +136,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit Profile')),
+      backgroundColor: Colors.white,
+      appBar: AppBar(title: const Text('Edit Profile'), backgroundColor: Colors.white,),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Form(

@@ -52,6 +52,7 @@ class _RegisterPageState extends State<RegisterPage> {
         'name': _nameController.text.trim(),
         'email': _emailController.text.trim(),
         'phone number': _phoneNumberController.text.trim(),
+        'createdAt': FieldValue.serverTimestamp(),
       });
     } on FirebaseAuthException catch (e) {
       if (e.code == 'email-already-in-use') {
@@ -109,7 +110,7 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color.fromRGBO(207, 207, 232, 1),
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(

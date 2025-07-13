@@ -40,14 +40,15 @@ class ScheduleTimePage extends StatelessWidget {
     print("DEBUG: routeId → $routeId | queryDate → $queryDate");
 
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(
           "$from → $to",
-          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 20),
+          style: TextStyle(fontSize: 20),
         ),
         centerTitle: true,
         backgroundColor: Colors.white,
-        foregroundColor: Colors.grey[700],
+        foregroundColor: Colors.black87,
         elevation: 0,
       ),
       body: Padding(

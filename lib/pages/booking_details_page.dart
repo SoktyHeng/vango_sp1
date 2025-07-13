@@ -9,18 +9,17 @@ class BookingDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(
           'Booking Details',
           style: GoogleFonts.roboto(
-            fontWeight: FontWeight.bold,
-            color: Colors.grey[800],
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
           ),
         ),
         backgroundColor: Colors.white,
-        elevation: 1,
-        iconTheme: IconThemeData(color: Colors.grey[800]),
+        elevation: 0,
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -29,7 +28,8 @@ class BookingDetailPage extends StatelessWidget {
             children: [
               // Trip Information Card
               Card(
-                elevation: 4,
+                color: Colors.white,
+                elevation: 2,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -62,17 +62,22 @@ class BookingDetailPage extends StatelessWidget {
                       _detailRow(Icons.calendar_today, "Date", booking['date']),
                       _detailRow(Icons.access_time, "Time", booking['time']),
                       if (booking['location'] != null)
-                        _detailRow(Icons.place, "Location", booking['location']),
+                        _detailRow(
+                          Icons.place,
+                          "Location",
+                          booking['location'],
+                        ),
                     ],
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Booking Information Card
               Card(
-                elevation: 4,
+                color: Colors.white,
+                elevation: 2,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -100,18 +105,27 @@ class BookingDetailPage extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      _detailRow(Icons.event_seat, "Seats", (booking['selectedSeats'] as List).join(', ')),
-                      _detailRow(Icons.people, "Passengers", booking['passengerCount'].toString()),
+                      _detailRow(
+                        Icons.event_seat,
+                        "Seats",
+                        (booking['selectedSeats'] as List).join(', '),
+                      ),
+                      _detailRow(
+                        Icons.people,
+                        "Passengers",
+                        booking['passengerCount'].toString(),
+                      ),
                     ],
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Payment Information Card
               Card(
-                elevation: 4,
+                color: Colors.white,
+                elevation: 2,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -139,16 +153,20 @@ class BookingDetailPage extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      _detailRow(Icons.monetization_on, "Price/Seat", "${booking['pricePerSeat']} ฿"),
+                      _detailRow(
+                        Icons.monetization_on,
+                        "Price/Seat",
+                        "${booking['pricePerSeat']} ฿",
+                      ),
                       if ((booking['promoCode'] ?? "").isNotEmpty)
-                        _detailRow(Icons.local_offer, "Promo Code", booking['promoCode']),
+                        _detailRow(
+                          Icons.local_offer,
+                          "Promo Code",
+                          booking['promoCode'],
+                        ),
                       const Divider(height: 20),
                       Container(
                         padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color.fromRGBO(78, 78, 148, 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -187,11 +205,7 @@ class BookingDetailPage extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Icon(
-            icon,
-            size: 20,
-            color: Colors.grey[600],
-          ),
+          Icon(icon, size: 20, color: Colors.grey[600]),
           const SizedBox(width: 12),
           SizedBox(
             width: 100,

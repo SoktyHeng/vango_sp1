@@ -30,6 +30,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     return Scaffold(
       body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
+        backgroundColor: Colors.white,
         currentIndex: _selectedIndex,
         onTap: _onTap,
         items: const [

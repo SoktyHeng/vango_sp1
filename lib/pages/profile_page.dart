@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,11 +17,73 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   Map<String, dynamic>? userData;
   bool isLoading = true;
+  StreamSubscription<DocumentSnapshot>? _userDocListener;
 
   @override
   void initState() {
     super.initState();
-    fetchUserData();
+    setupUserDocumentListener();
+  }
+
+  @override
+  void dispose() {
+    _userDocListener?.cancel();
+    super.dispose();
+  }
+
+  void setupUserDocumentListener() {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+
+    // Listen to the user document in real-time
+    _userDocListener = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .listen(
+          (docSnapshot) {
+            if (!mounted) return;
+
+            if (docSnapshot.exists) {
+              // Document exists, update user data
+              setState(() {
+                userData = docSnapshot.data();
+                isLoading = false;
+              });
+            } else {
+              // Document doesn't exist (deleted by admin)
+              // Automatically sign out the user
+              _handleUserDeleted();
+            }
+          },
+          onError: (error) {
+            print('Error listening to user document: $error');
+            if (mounted) {
+              setState(() {
+                isLoading = false;
+              });
+            }
+          },
+        );
+  }
+
+  Future<void> _handleUserDeleted() async {
+    try {
+      // Sign out the user
+      await FirebaseAuth.instance.signOut();
+
+      // Show a message to inform the user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your account has been removed by an administrator.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error signing out deleted user: $e');
+    }
   }
 
   Future<void> fetchUserData() async {
@@ -33,6 +97,9 @@ class _ProfilePageState extends State<ProfilePage> {
         userData = doc.data();
         isLoading = false;
       });
+    } else {
+      // Handle case where user document doesn't exist
+      _handleUserDeleted();
     }
   }
 
@@ -42,9 +109,26 @@ class _ProfilePageState extends State<ProfilePage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    // If userData is null (user deleted), show loading while signing out
+    if (userData == null) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Account removed. Signing out...'),
+            ],
+          ),
+        ),
+      );
+    }
+
     final imageUrl = userData?['profileImage'];
 
     return Scaffold(
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
@@ -63,10 +147,8 @@ class _ProfilePageState extends State<ProfilePage> {
                           builder: (context) => const EditProfilePage(),
                         ),
                       ).then((_) {
-                        setState(() {
-                          isLoading = true;
-                        });
-                        fetchUserData();
+                        // Don't manually fetch data anymore since we're using real-time listener
+                        // The listener will automatically update the UI
                       });
                     },
                   ),
@@ -143,10 +225,14 @@ class _ProfilePageState extends State<ProfilePage> {
                                   onPressed: () async {
                                     final uid =
                                         FirebaseAuth.instance.currentUser!.uid;
-                                    final imageRef = FirebaseStorage.instance
-                                        .ref()
-                                        .child('profile_images/$uid.jpg');
-                                    await imageRef.delete();
+                                    try {
+                                      final imageRef = FirebaseStorage.instance
+                                          .ref()
+                                          .child('profile_images/$uid.jpg');
+                                      await imageRef.delete();
+                                    } catch (e) {
+                                      // Image might not exist
+                                    }
                                     await FirebaseFirestore.instance
                                         .collection('users')
                                         .doc(uid)

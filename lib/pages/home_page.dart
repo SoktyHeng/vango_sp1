@@ -58,6 +58,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
@@ -70,6 +71,7 @@ class _HomePageState extends State<HomePage> {
 
               // From Dropdown
               DropdownButtonFormField<String>(
+                dropdownColor: Colors.white,
                 value: fromLocation,
                 isExpanded: true,
                 decoration: InputDecoration(labelText: "From"),
@@ -91,6 +93,7 @@ class _HomePageState extends State<HomePage> {
 
               // To Dropdown
               DropdownButtonFormField<String>(
+                dropdownColor: Colors.white,
                 value: toLocation,
                 isExpanded: true,
                 decoration: InputDecoration(labelText: "To"),
@@ -112,6 +115,7 @@ class _HomePageState extends State<HomePage> {
               // Pick Up/Drop Off Location Dropdown (condos)
               if (showCondoDropdown)
                 DropdownButtonFormField<String>(
+                  dropdownColor: Colors.white,
                   value: pickUpDropOffLocation,
                   isExpanded: true,
                   decoration: InputDecoration(labelText: condoLabel),
@@ -175,32 +179,41 @@ class _HomePageState extends State<HomePage> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed:
-                      (fromLocation != null &&
-                          toLocation != null &&
-                          departureDate != null &&
-                          (!showCondoDropdown ||
-                              (pickUpDropOffLocation != null &&
-                                  (pickUpDropOffLocation != "Other" ||
-                                      (pickUpDropOffLocation == "Other" &&
-                                          customCondoName != null &&
-                                          customCondoName!.isNotEmpty)))))
-                      ? () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ScheduleTimePage(
-                                from: fromLocation!,
-                                to: toLocation!,
-                                date: departureDate!,
-                                location: pickUpDropOffLocation == "Other"
-                                    ? customCondoName!
-                                    : pickUpDropOffLocation!,
-                              ),
-                            ),
-                          );
-                        }
-                      : null,
+                  onPressed: () {
+                    // Check if all required fields are filled
+                    if (fromLocation != null &&
+                        toLocation != null &&
+                        departureDate != null &&
+                        (!showCondoDropdown ||
+                            (pickUpDropOffLocation != null &&
+                                (pickUpDropOffLocation != "Other" ||
+                                    (pickUpDropOffLocation == "Other" &&
+                                        customCondoName != null &&
+                                        customCondoName!.isNotEmpty))))) {
+                      // All fields are filled, navigate to next page
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ScheduleTimePage(
+                            from: fromLocation!,
+                            to: toLocation!,
+                            date: departureDate!,
+                            location: pickUpDropOffLocation == "Other"
+                                ? customCondoName!
+                                : pickUpDropOffLocation!,
+                          ),
+                        ),
+                      );
+                    } else {
+                      // Show a snackbar or dialog to inform user about missing fields
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Please fill in all required fields'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Color.fromRGBO(78, 78, 148, 1),
                     foregroundColor: Colors.white,

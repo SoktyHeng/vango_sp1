@@ -97,6 +97,7 @@ class _BookingPageState extends State<BookingPage>
     return Container(
       margin: EdgeInsets.only(bottom: 16),
       child: Card(
+        color: Colors.white,
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
@@ -324,7 +325,7 @@ class _BookingPageState extends State<BookingPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white10,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(
           "My Booking",
