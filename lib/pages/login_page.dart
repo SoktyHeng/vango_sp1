@@ -148,6 +148,7 @@ class _LoginPageState extends State<LoginPage> {
                         await signIn();
                       },
                       child: Container(
+                        height: 60,
                         padding: EdgeInsets.all(20),
                         decoration: BoxDecoration(
                           color: Color.fromRGBO(78, 78, 148, 1),
@@ -159,7 +160,7 @@ class _LoginPageState extends State<LoginPage> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: Colors.white,
-                              fontSize: 18,
+                              fontSize: 16,
                             ),
                           ),
                         ),

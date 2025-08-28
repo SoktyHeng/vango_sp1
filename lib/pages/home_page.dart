@@ -9,25 +9,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final List<String> locations = ["AU", "Mega", "Siam"];
-  final List<String> condos = [
-    "MSME",
-    "King Solomon AU",
-    "Queen of Sheba AU",
-    "Dcondo",
-    "Deeplus",
-    "Viewpoint",
-    "Tonson",
-    "Groovy",
-    "The Hub",
-    "Swift Condo",
-    "Muffin",
-    "Delonix",
-    "Other", // Add 'Other' as last option
-  ];
   String? fromLocation;
   String? toLocation;
-  String? pickUpDropOffLocation;
-  String? customCondoName; // For user input when "Other" is selected
   DateTime? departureDate;
 
   List<String> get filteredToLocations {
@@ -38,20 +21,6 @@ class _HomePageState extends State<HomePage> {
       return ["AU"];
     } else {
       return locations.where((loc) => loc != fromLocation).toList();
-    }
-  }
-
-  bool get showCondoDropdown {
-    return fromLocation != null &&
-        toLocation != null &&
-        (fromLocation == "AU" || toLocation == "AU");
-  }
-
-  String get condoLabel {
-    if (fromLocation == "AU") {
-      return "Pickup Location (Condo)";
-    } else {
-      return "Drop-off Location (Condo)";
     }
   }
 
@@ -84,8 +53,6 @@ class _HomePageState extends State<HomePage> {
                   setState(() {
                     fromLocation = value;
                     toLocation = null;
-                    pickUpDropOffLocation = null;
-                    customCondoName = null;
                   });
                 },
               ),
@@ -105,50 +72,10 @@ class _HomePageState extends State<HomePage> {
                 onChanged: (value) {
                   setState(() {
                     toLocation = value;
-                    pickUpDropOffLocation = null;
-                    customCondoName = null;
                   });
                 },
               ),
               SizedBox(height: 20),
-
-              // Pick Up/Drop Off Location Dropdown (condos)
-              if (showCondoDropdown)
-                DropdownButtonFormField<String>(
-                  dropdownColor: Colors.white,
-                  value: pickUpDropOffLocation,
-                  isExpanded: true,
-                  decoration: InputDecoration(labelText: condoLabel),
-                  items: condos
-                      .map(
-                        (condo) =>
-                            DropdownMenuItem(value: condo, child: Text(condo)),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      pickUpDropOffLocation = value;
-                      if (value != "Other") {
-                        customCondoName = null;
-                      }
-                    });
-                  },
-                ),
-              if (showCondoDropdown && pickUpDropOffLocation == "Other")
-                Padding(
-                  padding: const EdgeInsets.only(top: 12.0),
-                  child: TextFormField(
-                    decoration: InputDecoration(
-                      labelText: "Enter your condo name",
-                    ),
-                    onChanged: (value) {
-                      setState(() {
-                        customCondoName = value;
-                      });
-                    },
-                  ),
-                ),
-              if (showCondoDropdown) SizedBox(height: 20),
 
               // Departure Date Picker
               ListTile(
@@ -183,13 +110,7 @@ class _HomePageState extends State<HomePage> {
                     // Check if all required fields are filled
                     if (fromLocation != null &&
                         toLocation != null &&
-                        departureDate != null &&
-                        (!showCondoDropdown ||
-                            (pickUpDropOffLocation != null &&
-                                (pickUpDropOffLocation != "Other" ||
-                                    (pickUpDropOffLocation == "Other" &&
-                                        customCondoName != null &&
-                                        customCondoName!.isNotEmpty))))) {
+                        departureDate != null) {
                       // All fields are filled, navigate to next page
                       Navigator.push(
                         context,
@@ -198,14 +119,11 @@ class _HomePageState extends State<HomePage> {
                             from: fromLocation!,
                             to: toLocation!,
                             date: departureDate!,
-                            location: pickUpDropOffLocation == "Other"
-                                ? customCondoName!
-                                : pickUpDropOffLocation!,
                           ),
                         ),
                       );
                     } else {
-                      // Show a snackbar or dialog to inform user about missing fields
+                      // Show a snackbar to inform user about missing fields
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('Please fill in all required fields'),

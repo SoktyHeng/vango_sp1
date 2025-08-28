@@ -27,8 +27,25 @@ class PassengerInfoPage extends StatefulWidget {
 }
 
 class _PassengerInfoPageState extends State<PassengerInfoPage> {
-  final TextEditingController _promoController = TextEditingController();
-  bool _isLoading = false; // Add this loading state
+  final List<String> condos = [
+    "MSME",
+    "King Solomon AU",
+    "Queen of Sheba AU",
+    "Dcondo",
+    "Deeplus",
+    "Viewpoint",
+    "Tonson",
+    "Groovy",
+    "The Hub",
+    "Swift Condo",
+    "Muffin",
+    "Delonix",
+    "Other",
+  ];
+
+  String? pickUpDropOffLocation;
+  String? customCondoName;
+  bool _isLoading = false;
 
   int get passengerCount => widget.selectedSeats.length;
   int get totalPrice => passengerCount * widget.pricePerSeat;
@@ -180,66 +197,117 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
                   ),
                 ),
 
-                SizedBox(height: 20),
-
-                // Promo Code Card
-                Card(
-                  color: Colors.white,
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.local_offer,
-                              color: Colors.orange.shade600,
-                              size: 24,
-                            ),
-                            SizedBox(width: 12),
-                            Text(
-                              "Promo Code",
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
+                // Condo Selection Card
+                if (showCondoDropdown) ...[
+                  SizedBox(height: 20),
+                  Card(
+                    color: Colors.white,
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.location_city,
+                                color: Colors.purple.shade600,
+                                size: 24,
                               ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 16),
-
-                        TextField(
-                          controller: _promoController,
-                          decoration: InputDecoration(
-                            hintText: "Enter promo code (optional)",
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: Colors.grey.shade300,
+                              SizedBox(width: 12),
+                              Text(
+                                condoLabel,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: Color.fromRGBO(78, 78, 148, 1),
-                                width: 2,
-                              ),
-                            ),
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 16,
-                            ),
+                            ],
                           ),
-                        ),
-                      ],
+                          SizedBox(height: 16),
+
+                          DropdownButtonFormField<String>(
+                            dropdownColor: Colors.white,
+                            value: pickUpDropOffLocation,
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              hintText: "Select your location",
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: Colors.grey.shade300,
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: Color.fromRGBO(78, 78, 148, 1),
+                                  width: 2,
+                                ),
+                              ),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 16,
+                              ),
+                            ),
+                            items: condos
+                                .map(
+                                  (condo) => DropdownMenuItem(
+                                    value: condo,
+                                    child: Text(condo),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                pickUpDropOffLocation = value;
+                                if (value != "Other") {
+                                  customCondoName = null;
+                                }
+                              });
+                            },
+                          ),
+
+                          if (pickUpDropOffLocation == "Other")
+                            Padding(
+                              padding: const EdgeInsets.only(top: 16.0),
+                              child: TextFormField(
+                                decoration: InputDecoration(
+                                  hintText: "Enter your condo name",
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: Colors.grey.shade300,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: Color.fromRGBO(78, 78, 148, 1),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 16,
+                                  ),
+                                ),
+                                onChanged: (value) {
+                                  setState(() {
+                                    customCondoName = value;
+                                  });
+                                },
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
+                ],
 
                 SizedBox(height: 50),
 
@@ -251,6 +319,22 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
                     onPressed: _isLoading
                         ? null
                         : () async {
+                            // Validate condo selection if required
+                            if (showCondoDropdown &&
+                                (pickUpDropOffLocation == null ||
+                                    (pickUpDropOffLocation == "Other" &&
+                                        (customCondoName == null ||
+                                            customCondoName!
+                                                .trim()
+                                                .isEmpty)))) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text("Please select your location"),
+                                ),
+                              );
+                              return;
+                            }
+
                             setState(() {
                               _isLoading = true;
                             });
@@ -260,11 +344,49 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
                               final userId = user?.uid;
                               final now = Timestamp.now();
 
+                              // First, find and get the schedule document to get its ID
+                              final routeId =
+                                  "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
+                              final formattedBookingDate =
+                                  "${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}";
+
+                              final scheduleQuery = await FirebaseFirestore
+                                  .instance
+                                  .collection('schedules')
+                                  .where('routeId', isEqualTo: routeId)
+                                  .where(
+                                    'date',
+                                    isEqualTo: formattedBookingDate,
+                                  )
+                                  .where('time', isEqualTo: widget.time)
+                                  .limit(1)
+                                  .get();
+
+                              if (scheduleQuery.docs.isEmpty) {
+                                throw Exception('Schedule not found');
+                              }
+
+                              final scheduleDoc = scheduleQuery.docs.first;
+                              final scheduleId = scheduleDoc
+                                  .id; // Get the schedule document ID
+
+                              // Determine final location
+                              String finalLocation = widget.location;
+                              if (showCondoDropdown &&
+                                  pickUpDropOffLocation != null) {
+                                if (pickUpDropOffLocation == "Other" &&
+                                    customCondoName != null) {
+                                  finalLocation = customCondoName!.trim();
+                                } else {
+                                  finalLocation = pickUpDropOffLocation!;
+                                }
+                              }
+
+                              // Create booking data with scheduleId
                               final bookingData = {
                                 "from": widget.from,
                                 "to": widget.to,
-                                "date":
-                                    "${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}",
+                                "date": formattedBookingDate,
                                 "time": widget.time,
                                 "selectedSeats": widget.selectedSeats,
                                 "pricePerSeat": widget.pricePerSeat,
@@ -272,10 +394,12 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
                                     widget.selectedSeats.length *
                                     widget.pricePerSeat,
                                 "passengerCount": widget.selectedSeats.length,
-                                "promoCode": _promoController.text.trim(),
                                 "userId": userId,
                                 "timestamp": now,
-                                "location": widget.location,
+                                "location": finalLocation,
+                                "scheduleId":
+                                    scheduleId, // Add scheduleId field
+                                "status": "confirmed", // Add booking status
                               };
 
                               // Save booking
@@ -283,34 +407,19 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
                                   .collection('bookings')
                                   .add(bookingData);
 
-                              // Update schedule seatTaken
-                              final routeId =
-                                  "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
-                              final scheduleQuery = await FirebaseFirestore
-                                  .instance
-                                  .collection('schedules')
-                                  .where('routeId', isEqualTo: routeId)
-                                  .where('date', isEqualTo: bookingData['date'])
-                                  .where('time', isEqualTo: widget.time)
-                                  .limit(1)
-                                  .get();
+                              // Update schedule seatsTaken
+                              final docRef = scheduleDoc.reference;
+                              final currentTaken = List<int>.from(
+                                scheduleDoc['seatsTaken'] ?? [],
+                              );
+                              final updatedTaken = [
+                                ...currentTaken,
+                                ...widget.selectedSeats,
+                              ];
 
-                              if (scheduleQuery.docs.isNotEmpty) {
-                                final scheduleDoc = scheduleQuery.docs.first;
-                                final docRef = scheduleDoc.reference;
-
-                                final currentTaken = List<int>.from(
-                                  scheduleDoc['seatsTaken'],
-                                );
-                                final updatedTaken = [
-                                  ...currentTaken,
-                                  ...widget.selectedSeats,
-                                ];
-
-                                await docRef.update({
-                                  "seatsTaken": updatedTaken.toSet().toList(),
-                                });
-                              }
+                              await docRef.update({
+                                "seatsTaken": updatedTaken.toSet().toList(),
+                              });
 
                               setState(() {
                                 _isLoading = false;
@@ -320,7 +429,9 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
                                 context: context,
                                 builder: (_) => AlertDialog(
                                   title: Text("Booking Confirmed"),
-                                  content: Text("Your booking has been saved."),
+                                  content: Text(
+                                    "Your booking has been saved successfully.",
+                                  ),
                                   actions: [
                                     TextButton(
                                       onPressed: () => Navigator.popUntil(
@@ -432,5 +543,18 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
         ),
       ],
     );
+  }
+
+  // Add these getter methods
+  bool get showCondoDropdown {
+    return widget.from == "AU" || widget.to == "AU";
+  }
+
+  String get condoLabel {
+    if (widget.from == "AU") {
+      return "Pickup Location (Condo)";
+    } else {
+      return "Drop-off Location (Condo)";
+    }
   }
 }

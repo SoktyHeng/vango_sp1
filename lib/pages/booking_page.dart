@@ -329,7 +329,7 @@ class _BookingPageState extends State<BookingPage>
       appBar: AppBar(
         title: Text(
           "My Booking",
-          style: TextStyle(fontWeight: FontWeight.w600),
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 20),
         ),
         backgroundColor: Colors.white10,
         foregroundColor: Colors.black87,

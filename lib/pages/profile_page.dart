@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+
 import 'edit_profile_page.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -17,6 +20,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   Map<String, dynamic>? userData;
   bool isLoading = true;
+  String? errorMessage;
   StreamSubscription<DocumentSnapshot>? _userDocListener;
 
   @override
@@ -32,38 +36,59 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void setupUserDocumentListener() {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+    try {
+      setState(() {
+        isLoading = true;
+        errorMessage = null;
+      });
 
-    // Listen to the user document in real-time
-    _userDocListener = FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .snapshots()
-        .listen(
-          (docSnapshot) {
-            if (!mounted) return;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        setState(() {
+          errorMessage = 'Not authenticated';
+          isLoading = false;
+        });
+        return;
+      }
 
-            if (docSnapshot.exists) {
-              // Document exists, update user data
-              setState(() {
-                userData = docSnapshot.data();
-                isLoading = false;
-              });
-            } else {
-              // Document doesn't exist (deleted by admin)
-              // Automatically sign out the user
-              _handleUserDeleted();
-            }
-          },
-          onError: (error) {
-            print('Error listening to user document: $error');
-            if (mounted) {
-              setState(() {
-                isLoading = false;
-              });
-            }
-          },
-        );
+      // Listen to the user document in real-time
+      _userDocListener = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots()
+          .listen(
+            (docSnapshot) {
+              if (!mounted) return;
+
+              if (docSnapshot.exists) {
+                // Document exists, update user data
+                setState(() {
+                  userData = docSnapshot.data();
+                  isLoading = false;
+                  errorMessage = null;
+                });
+              } else {
+                // Document doesn't exist (deleted by admin)
+                // Automatically sign out the user
+                _handleUserDeleted();
+              }
+            },
+            onError: (error) {
+              print('Error listening to user document: $error');
+              if (mounted) {
+                setState(() {
+                  errorMessage = 'Error loading profile: $error';
+                  isLoading = false;
+                });
+              }
+            },
+          );
+    } catch (e) {
+      setState(() {
+        errorMessage = 'Error loading profile: $e';
+        isLoading = false;
+      });
+    }
   }
 
   Future<void> _handleUserDeleted() async {
@@ -86,188 +111,345 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  Future<void> fetchUserData() async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .get();
-    if (doc.exists && mounted) {
-      setState(() {
-        userData = doc.data();
-        isLoading = false;
+  Future<void> _signOut() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error signing out: $e')));
+      }
+    }
+  }
+
+  Future<void> _pickAndUploadImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 50,
+    );
+    if (pickedFile != null) {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final file = File(pickedFile.path);
+      final ref = FirebaseStorage.instance.ref().child(
+        'profile_images/$uid.jpg',
+      );
+      await ref.putFile(file);
+      final downloadUrl = await ref.getDownloadURL();
+
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'profileImage': downloadUrl,
       });
-    } else {
-      // Handle case where user document doesn't exist
-      _handleUserDeleted();
+      if (!mounted) return;
+      setState(() {
+        userData!['profileImage'] = downloadUrl;
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Profile photo updated!')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    // If userData is null (user deleted), show loading while signing out
-    if (userData == null) {
-      return const Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Account removed. Signing out...'),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final imageUrl = userData?['profileImage'];
-
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                Align(
-                  alignment: Alignment.topRight,
-                  child: IconButton(
-                    icon: const Icon(Icons.edit, size: 25),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const EditProfilePage(),
-                        ),
-                      ).then((_) {
-                        // Don't manually fetch data anymore since we're using real-time listener
-                        // The listener will automatically update the UI
-                      });
-                    },
-                  ),
-                ),
-                const SizedBox(height: 20),
-                CircleAvatar(
-                  radius: 50,
-                  backgroundImage: imageUrl != null
-                      ? NetworkImage(imageUrl)
-                      : null,
-                  child: imageUrl == null
-                      ? const Icon(Icons.person, size: 50)
-                      : null,
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  userData?['name'] ?? '',
-                  style: GoogleFonts.roboto(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  userData?['email'] ?? '',
-                  style: GoogleFonts.roboto(fontSize: 18),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  "Phone: ${userData?['phone number'] ?? 'N/A'}",
-                  style: GoogleFonts.roboto(fontSize: 16),
-                ),
-                Spacer(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        FirebaseAuth.instance.signOut();
-                      },
-                      child: Text(
-                        'Sign Out',
-                        style: GoogleFonts.roboto(
-                          fontSize: 16,
-                          color: const Color.fromRGBO(78, 78, 148, 1),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 25),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) {
-                            return AlertDialog(
-                              title: const Text('Delete Account'),
-                              content: const Text(
-                                'Are you sure you want to delete your account?',
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.of(context).pop();
-                                  },
-                                  child: const Text('Cancel'),
-                                ),
-                                TextButton(
-                                  onPressed: () async {
-                                    final uid =
-                                        FirebaseAuth.instance.currentUser!.uid;
-                                    try {
-                                      final imageRef = FirebaseStorage.instance
-                                          .ref()
-                                          .child('profile_images/$uid.jpg');
-                                      await imageRef.delete();
-                                    } catch (e) {
-                                      // Image might not exist
-                                    }
-                                    await FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(uid)
-                                        .delete();
-                                    await FirebaseAuth.instance.currentUser!
-                                        .delete();
-                                    if (!mounted) return;
-                                    Navigator.of(context).pop();
-                                    Navigator.of(
-                                      context,
-                                    ).popUntil((route) => route.isFirst);
-                                  },
-                                  child: const Text('Delete'),
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                      },
-                      child: Text(
-                        'Delete Account',
-                        style: GoogleFonts.roboto(
-                          fontSize: 16,
-                          color: const Color.fromRGBO(78, 78, 148, 1),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: const SizedBox(), // Remove back button
+        title: const Text(
+          'My Profile',
+          style: TextStyle(
+            color: Colors.black87,
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
           ),
         ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit, color: Colors.black87),
+            onPressed: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const EditProfilePage(),
+                ),
+              );
+              // The listener will automatically update the UI, no need to manually reload
+            },
+          ),
+        ],
       ),
+      body: isLoading
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text(
+                    'Loading profile...',
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                ],
+              ),
+            )
+          : errorMessage != null
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                  const SizedBox(height: 16),
+                  Text(
+                    errorMessage!,
+                    style: const TextStyle(fontSize: 16, color: Colors.red),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: setupUserDocumentListener,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : userData == null
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Account removed. Signing out...'),
+                ],
+              ),
+            )
+          : Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Column(
+                children: [
+                  // Top spacing
+                  const SizedBox(height: 60),
+
+                  // Profile Avatar
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.grey[300]!, width: 2),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(60),
+                      child: userData!['profileImage'] != null
+                          ? Image.network(
+                              userData!['profileImage'],
+                              fit: BoxFit.cover,
+                              loadingBuilder:
+                                  (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return Center(
+                                      child: CircularProgressIndicator(
+                                        value:
+                                            loadingProgress
+                                                    .expectedTotalBytes !=
+                                                null
+                                            ? loadingProgress
+                                                      .cumulativeBytesLoaded /
+                                                  loadingProgress
+                                                      .expectedTotalBytes!
+                                            : null,
+                                      ),
+                                    );
+                                  },
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  Icons.person,
+                                  size: 60,
+                                  color: Colors.grey[400],
+                                );
+                              },
+                            )
+                          : Icon(
+                              Icons.person,
+                              size: 60,
+                              color: Colors.grey[400],
+                            ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  // User Name
+                  Text(
+                    userData!['name'] ?? 'User Name',
+                    style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  // Email
+                  Text(
+                    userData!['email'] ?? 'Not provided',
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Phone
+                  Text(
+                    'Phone: ${userData!['phone number'] ?? 'Not provided'}',
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  // Spacer to push buttons to bottom
+                  const Spacer(),
+
+                  // Sign Out Button
+                  GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          title: const Text('Sign Out'),
+                          content: const Text(
+                            'Are you sure you want to sign out?',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cancel'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _signOut();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Sign Out'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        'Sign Out',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Color.fromRGBO(78, 78, 148, 1),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Delete Account Button
+                  GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          title: const Text(
+                            'Delete Account',
+                            style: TextStyle(
+                              color: Color.fromRGBO(78, 78, 148, 1),
+                            ),
+                          ),
+                          content: const Text(
+                            'This action cannot be undone. Are you sure you want to permanently delete your account?',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cancel'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () async {
+                                final uid =
+                                    FirebaseAuth.instance.currentUser!.uid;
+                                try {
+                                  final imageRef = FirebaseStorage.instance
+                                      .ref()
+                                      .child('profile_images/$uid.jpg');
+                                  await imageRef.delete();
+                                } catch (e) {
+                                  // Image might not exist
+                                }
+                                await FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(uid)
+                                    .delete();
+                                await FirebaseAuth.instance.currentUser!
+                                    .delete();
+                                if (!mounted) return;
+                                Navigator.pop(context);
+                                Navigator.of(
+                                  context,
+                                ).popUntil((route) => route.isFirst);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Delete'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        'Delete Account',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Color.fromRGBO(78, 78, 148, 1),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 40),
+                ],
+              ),
+            ),
     );
   }
 }

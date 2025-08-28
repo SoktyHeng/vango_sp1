@@ -7,19 +7,16 @@ class ScheduleTimePage extends StatelessWidget {
   final String from;
   final String to;
   final DateTime date;
-  final String location;
 
   const ScheduleTimePage({
     required this.from,
     required this.to,
     required this.date,
-    required this.location,
     super.key,
   });
 
   String get routeId =>
       '${from.trim().toLowerCase()}_${to.trim().toLowerCase()}';
-
 
   Future<int> fetchPriceForRoute(String routeId) async {
     final doc = await FirebaseFirestore.instance
@@ -32,20 +29,63 @@ class ScheduleTimePage extends StatelessWidget {
     return 0;
   }
 
+  bool isTimeAvailable(String timeString) {
+    final now = DateTime.now();
+    final selectedDate = DateTime(date.year, date.month, date.day);
+    final today = DateTime(now.year, now.month, now.day);
+
+    // If the selected date is in the future, all times are available
+    if (selectedDate.isAfter(today)) {
+      return true;
+    }
+
+    // If the selected date is in the past, no times are available
+    if (selectedDate.isBefore(today)) {
+      return false;
+    }
+
+    // If it's today, check if the time has passed
+    if (selectedDate.isAtSameMomentAs(today)) {
+      try {
+        // Parse the time string (e.g., "4:00 PM" or "16:00")
+        final timeFormat =
+            timeString.contains('PM') || timeString.contains('AM')
+            ? DateFormat('h:mm a')
+            : DateFormat('HH:mm');
+
+        final scheduleTime = timeFormat.parse(timeString);
+        final scheduleDateTime = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          scheduleTime.hour,
+          scheduleTime.minute,
+        );
+
+        // Add a buffer of 30 minutes (user cannot book if departure is within 30 minutes)
+        final bufferTime = now.add(Duration(minutes: 30));
+
+        return scheduleDateTime.isAfter(bufferTime);
+      } catch (e) {
+        print("Error parsing time: $timeString - $e");
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     String formattedDate = DateFormat('EEE, MMM d, y').format(date);
-    String queryDate = DateFormat('yyyy-MM-dd').format(date); // for Firestore
+    String queryDate = DateFormat('yyyy-MM-dd').format(date);
 
     print("DEBUG: routeId → $routeId | queryDate → $queryDate");
 
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(
-          "$from → $to",
-          style: TextStyle(fontSize: 20),
-        ),
+        title: Text("$from → $to", style: TextStyle(fontSize: 20)),
         centerTitle: true,
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
@@ -100,14 +140,73 @@ class ScheduleTimePage extends StatelessWidget {
                   }
 
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return Center(child: Text("No schedules available."));
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.schedule,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            "No schedules available for this date.",
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey[600],
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    );
                   }
 
                   final docs = snapshot.data!.docs;
-                  print("DEBUG: Fetched ${docs.length} schedule(s)");
 
-                  for (var doc in docs) {
-                    print("→ ${doc.data()}");
+                  // Filter out past times for today
+                  final availableDocs = docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final time = data['time'];
+                    return isTimeAvailable(time);
+                  }).toList();
+
+                  print(
+                    "DEBUG: Fetched ${docs.length} schedule(s), ${availableDocs.length} available",
+                  );
+
+                  if (availableDocs.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.access_time,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            "No available schedules for this time.",
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey[600],
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            "Please select a future date or check back later.",
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[500],
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    );
                   }
 
                   return GridView.count(
@@ -115,28 +214,37 @@ class ScheduleTimePage extends StatelessWidget {
                     childAspectRatio: 2.0,
                     mainAxisSpacing: 20,
                     crossAxisSpacing: 20,
-                    children: docs.map((doc) {
+                    children: availableDocs.map((doc) {
                       final data = doc.data() as Map<String, dynamic>;
                       final time = data['time'];
                       final seatsTotal = data['seatsTotal'];
                       final seatsTaken = List<int>.from(data['seatsTaken']);
                       final seatLeft = seatsTotal - seatsTaken.length;
+                      final timeAvailable = isTimeAvailable(time);
 
                       return ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          backgroundColor: Color.fromRGBO(207, 207, 232, 1),
-                          foregroundColor: seatLeft > 0
+                          backgroundColor: !timeAvailable
+                              ? Colors.grey[300]
+                              : seatLeft > 0
+                              ? Color.fromRGBO(207, 207, 232, 1)
+                              : Colors.grey[200],
+                          foregroundColor: !timeAvailable
+                              ? Colors.grey[600]
+                              : seatLeft > 0
                               ? Colors.black
                               : Colors.grey,
                           side: BorderSide(
-                            color: Color.fromRGBO(78, 78, 143, 1),
+                            color: !timeAvailable
+                                ? Colors.grey[400]!
+                                : Color.fromRGBO(78, 78, 143, 1),
                             width: 1.5,
                           ),
                         ),
-                        onPressed: seatLeft > 0
+                        onPressed: timeAvailable && seatLeft > 0
                             ? () async {
                                 int price = await fetchPriceForRoute(routeId);
                                 Navigator.push(
@@ -149,7 +257,7 @@ class ScheduleTimePage extends StatelessWidget {
                                       date: date,
                                       time: time,
                                       pricePerSeat: price,
-                                      location: location,
+                                      location: routeId,
                                     ),
                                   ),
                                 );
@@ -173,9 +281,15 @@ class ScheduleTimePage extends StatelessWidget {
                               ),
                               SizedBox(height: 4),
                               Text(
-                                "Seat: $seatLeft / $seatsTotal",
+                                !timeAvailable
+                                    ? "Time Passed"
+                                    : seatLeft > 0
+                                    ? "Seat: $seatLeft / $seatsTotal"
+                                    : "Full",
                                 style: TextStyle(
-                                  color: seatLeft > 0
+                                  color: !timeAvailable
+                                      ? Colors.grey[600]
+                                      : seatLeft > 0
                                       ? Colors.green
                                       : Colors.red,
                                   fontSize: 13,
@@ -196,4 +310,3 @@ class ScheduleTimePage extends StatelessWidget {
     );
   }
 }
-

@@ -61,7 +61,8 @@ class BookingDetailPage extends StatelessWidget {
                       _detailRow(Icons.flag, "To", booking['to']),
                       _detailRow(Icons.calendar_today, "Date", booking['date']),
                       _detailRow(Icons.access_time, "Time", booking['time']),
-                      if (booking['location'] != null)
+                      if (booking['location'] != null &&
+                          booking['location'].toString().isNotEmpty)
                         _detailRow(
                           Icons.place,
                           "Location",
@@ -158,15 +159,13 @@ class BookingDetailPage extends StatelessWidget {
                         "Price/Seat",
                         "${booking['pricePerSeat']} ฿",
                       ),
-                      if ((booking['promoCode'] ?? "").isNotEmpty)
-                        _detailRow(
-                          Icons.local_offer,
-                          "Promo Code",
-                          booking['promoCode'],
-                        ),
                       const Divider(height: 20),
                       Container(
                         padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
