@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'schedule_time_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -12,6 +14,8 @@ class _HomePageState extends State<HomePage> {
   String? fromLocation;
   String? toLocation;
   DateTime? departureDate;
+  List<DateTime> availableDates = [];
+  bool isLoadingDates = false;
 
   List<String> get filteredToLocations {
     if (fromLocation == null) return [];
@@ -21,6 +25,169 @@ class _HomePageState extends State<HomePage> {
       return ["AU"];
     } else {
       return locations.where((loc) => loc != fromLocation).toList();
+    }
+  }
+
+  String get routeId {
+    if (fromLocation == null || toLocation == null) return '';
+    return '${fromLocation!.trim().toLowerCase()}_${toLocation!.trim().toLowerCase()}';
+  }
+
+  // Fetch available dates for the selected route
+  Future<void> fetchAvailableDates() async {
+    if (fromLocation == null || toLocation == null) {
+      setState(() {
+        availableDates = [];
+      });
+      return;
+    }
+
+    setState(() {
+      isLoadingDates = true;
+      availableDates = [];
+      departureDate = null; // Reset selected date when route changes
+    });
+
+    try {
+      final String currentRouteId = routeId;
+      final DateTime now = DateTime.now();
+      final DateTime maxDate = now.add(Duration(days: 90));
+
+      // Query schedules for the selected route
+      final QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection('schedules')
+          .where('routeId', isEqualTo: currentRouteId)
+          .get();
+
+      Set<DateTime> dateSet = {};
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final String dateStr = data['date'] ?? '';
+        final String timeStr = data['time'] ?? '';
+        
+        if (dateStr.isNotEmpty && timeStr.isNotEmpty) {
+          try {
+            // Parse the date string (format: yyyy-MM-dd)
+            final DateTime scheduleDate = DateTime.parse(dateStr);
+            
+            // Only include future dates within the 90-day range
+            if (scheduleDate.isAfter(now.subtract(Duration(days: 1))) && 
+                scheduleDate.isBefore(maxDate.add(Duration(days: 1)))) {
+              
+              // Check if the time is still available (for today's date)
+              if (scheduleDate.year == now.year && 
+                  scheduleDate.month == now.month && 
+                  scheduleDate.day == now.day) {
+                // For today, check if the time hasn't passed
+                if (isTimeAvailable(timeStr)) {
+                  dateSet.add(scheduleDate);
+                }
+              } else if (scheduleDate.isAfter(now)) {
+                // For future dates, add them
+                dateSet.add(scheduleDate);
+              }
+            }
+          } catch (e) {
+            print('Error parsing date: $dateStr - $e');
+          }
+        }
+      }
+
+      setState(() {
+        availableDates = dateSet.toList()..sort();
+        isLoadingDates = false;
+      });
+    } catch (e) {
+      print('Error fetching available dates: $e');
+      setState(() {
+        availableDates = [];
+        isLoadingDates = false;
+      });
+      
+      // Show error message to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load available dates. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Check if a time slot is still available (copied from schedule_time_page.dart)
+  bool isTimeAvailable(String timeString) {
+    final now = DateTime.now();
+    
+    try {
+      // Parse the time string (e.g., "4:00 PM" or "16:00")
+      final timeFormat = timeString.contains('PM') || timeString.contains('AM')
+          ? DateFormat('h:mm a')
+          : DateFormat('HH:mm');
+
+      final scheduleTime = timeFormat.parse(timeString);
+      final scheduleDateTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        scheduleTime.hour,
+        scheduleTime.minute,
+      );
+
+      // Add a buffer of 30 minutes
+      final bufferTime = now.add(Duration(minutes: 30));
+      return scheduleDateTime.isAfter(bufferTime);
+    } catch (e) {
+      print("Error parsing time: $timeString - $e");
+      return false;
+    }
+  }
+
+  // Custom date picker that only allows selection of available dates
+  Future<void> showCustomDatePicker() async {
+    if (availableDates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No available schedules for this route.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final DateTime firstDate = availableDates.first;
+    final DateTime lastDate = availableDates.last;
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: departureDate ?? firstDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      selectableDayPredicate: (DateTime day) {
+        // Only allow selection of dates that are in the availableDates list
+        return availableDates.any((date) =>
+            date.year == day.year &&
+            date.month == day.month &&
+            date.day == day.day);
+      },
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: Color.fromRGBO(78, 78, 148, 1),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        departureDate = picked;
+      });
     }
   }
 
@@ -43,16 +210,28 @@ class _HomePageState extends State<HomePage> {
                 dropdownColor: Colors.white,
                 value: fromLocation,
                 isExpanded: true,
-                decoration: InputDecoration(labelText: "From"),
+                decoration: InputDecoration(
+                  labelText: "From",
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: Color.fromRGBO(78, 78, 148, 1),
+                      width: 2,
+                    ),
+                  ),
+                ),
                 items: locations
-                    .map(
-                      (loc) => DropdownMenuItem(value: loc, child: Text(loc)),
-                    )
+                    .map((loc) => DropdownMenuItem(value: loc, child: Text(loc)))
                     .toList(),
                 onChanged: (value) {
                   setState(() {
                     fromLocation = value;
                     toLocation = null;
+                    departureDate = null;
+                    availableDates = [];
                   });
                 },
               ),
@@ -63,45 +242,91 @@ class _HomePageState extends State<HomePage> {
                 dropdownColor: Colors.white,
                 value: toLocation,
                 isExpanded: true,
-                decoration: InputDecoration(labelText: "To"),
+                decoration: InputDecoration(
+                  labelText: "To",
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: Color.fromRGBO(78, 78, 148, 1),
+                      width: 2,
+                    ),
+                  ),
+                ),
                 items: filteredToLocations
-                    .map(
-                      (loc) => DropdownMenuItem(value: loc, child: Text(loc)),
-                    )
+                    .map((loc) => DropdownMenuItem(value: loc, child: Text(loc)))
                     .toList(),
-                onChanged: (value) {
+                onChanged: (value) async {
                   setState(() {
                     toLocation = value;
+                    departureDate = null;
                   });
+                  
+                  // Fetch available dates when both from and to are selected
+                  if (fromLocation != null && toLocation != null) {
+                    await fetchAvailableDates();
+                  }
                 },
               ),
               SizedBox(height: 20),
 
               // Departure Date Picker
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(
-                  departureDate == null
-                      ? "Departure date"
-                      : "Departure date: ${departureDate?.toLocal().toString().split(' ')[0]}",
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[400]!),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                trailing: Icon(Icons.calendar_today),
-                onTap: () async {
-                  DateTime? picked = await showDatePicker(
-                    context: context,
-                    initialDate: departureDate ?? DateTime.now(),
-                    firstDate: DateTime.now(),
-                    lastDate: DateTime.now().add(Duration(days: 90)),
-                  );
-                  if (picked != null) {
-                    setState(() {
-                      departureDate = picked;
-                    });
-                  }
-                },
+                child: ListTile(
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  title: Text(
+                    departureDate == null
+                        ? "Select departure date"
+                        : "Departure: ${departureDate?.toLocal().toString().split(' ')[0]}",
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: departureDate == null ? Colors.grey[600] : Colors.black87,
+                    ),
+                  ),
+                  trailing: isLoadingDates
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Color.fromRGBO(78, 78, 148, 1),
+                            ),
+                          ),
+                        )
+                      : Icon(Icons.calendar_today, color: Color.fromRGBO(78, 78, 148, 1)),
+                  enabled: fromLocation != null && toLocation != null && !isLoadingDates,
+                  onTap: (fromLocation != null && toLocation != null && !isLoadingDates)
+                      ? showCustomDatePicker
+                      : null,
+                ),
               ),
+              
+              // Show available dates count
+              if (fromLocation != null && toLocation != null && !isLoadingDates)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Text(
+                    availableDates.isEmpty
+                        ? "No schedules available for this route"
+                        : "${availableDates.length} date${availableDates.length != 1 ? 's' : ''} available",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: availableDates.isEmpty ? Colors.red[600] : Colors.green[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              
               SizedBox(height: 24),
 
+              // Search Button
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -124,9 +349,18 @@ class _HomePageState extends State<HomePage> {
                       );
                     } else {
                       // Show a snackbar to inform user about missing fields
+                      String message = '';
+                      if (fromLocation == null) {
+                        message = 'Please select departure location';
+                      } else if (toLocation == null) {
+                        message = 'Please select destination';
+                      } else if (departureDate == null) {
+                        message = 'Please select departure date';
+                      }
+                      
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Please fill in all required fields'),
+                          content: Text(message),
                           backgroundColor: Colors.red,
                         ),
                       );
@@ -141,7 +375,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                   child: Text(
-                    "Search",
+                    "Search Schedules",
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),

@@ -96,6 +96,41 @@ class ScheduleTimePage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Price Display
+            FutureBuilder<int>(
+              future: fetchPriceForRoute(routeId),
+              builder: (context, priceSnapshot) {
+                final price = priceSnapshot.data ?? 0;
+                return Container(
+                  padding: EdgeInsets.all(14),
+                  margin: EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Color.fromRGBO(78, 78, 148, 1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.monetization_on,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        "Price: $price ฿/seat",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+
             // Date Box
             Container(
               padding: EdgeInsets.all(14),

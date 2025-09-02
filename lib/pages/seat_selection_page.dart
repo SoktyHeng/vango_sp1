@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:van_go/pages/passenger_info_page.dart'; // Make sure you import this
+import 'package:van_go/pages/passenger_info_page.dart';
+import 'package:intl/intl.dart'; // Add this import
 
 class SeatSelectionPage extends StatefulWidget {
   final List<int> occupiedSeats;
@@ -63,6 +64,8 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
 
   @override
   Widget build(BuildContext context) {
+    String formattedDate = DateFormat('EEE, MMM d, y').format(widget.date);
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -78,6 +81,46 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Date and Time Info
+            Container(
+              padding: EdgeInsets.all(16),
+              margin: EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Color.fromRGBO(207, 207, 232, 1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Color.fromRGBO(78, 78, 143, 1),
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.calendar_today, size: 20, color: Colors.grey[700]),
+                  SizedBox(width: 8),
+                  Text(
+                    formattedDate,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                  SizedBox(width: 20),
+                  Icon(Icons.access_time, size: 20, color: Colors.grey[700]),
+                  SizedBox(width: 8),
+                  Text(
+                    widget.time,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
             // Legend
             Row(
               children: [
@@ -93,7 +136,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                 Text('Occupied'),
               ],
             ),
-            SizedBox(height: 30),
+            SizedBox(height: 10),
 
             // Seat Grid
             Expanded(
@@ -101,7 +144,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                 itemCount: 12,
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
-                  mainAxisSpacing: 36,
+                  mainAxisSpacing: 24,
                   crossAxisSpacing: 36,
                   childAspectRatio: 1,
                 ),
@@ -165,7 +208,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                   handleNext(context);
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Color.fromRGBO(78,78, 148, 1),
+                  backgroundColor: Color.fromRGBO(78, 78, 148, 1),
                   foregroundColor: Colors.white,
                   elevation: 3,
                   shape: RoundedRectangleBorder(

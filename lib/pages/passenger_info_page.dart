@@ -1,7 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-
+import 'package:van_go/pages/payment_page.dart';
 class PassengerInfoPage extends StatefulWidget {
   final String from;
   final String to;
@@ -335,128 +333,34 @@ class _PassengerInfoPageState extends State<PassengerInfoPage> {
                               return;
                             }
 
-                            setState(() {
-                              _isLoading = true;
-                            });
-
-                            try {
-                              final user = FirebaseAuth.instance.currentUser;
-                              final userId = user?.uid;
-                              final now = Timestamp.now();
-
-                              // First, find and get the schedule document to get its ID
-                              final routeId =
-                                  "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
-                              final formattedBookingDate =
-                                  "${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}";
-
-                              final scheduleQuery = await FirebaseFirestore
-                                  .instance
-                                  .collection('schedules')
-                                  .where('routeId', isEqualTo: routeId)
-                                  .where(
-                                    'date',
-                                    isEqualTo: formattedBookingDate,
-                                  )
-                                  .where('time', isEqualTo: widget.time)
-                                  .limit(1)
-                                  .get();
-
-                              if (scheduleQuery.docs.isEmpty) {
-                                throw Exception('Schedule not found');
+                            // Determine final location
+                            String finalLocation = widget.location;
+                            if (showCondoDropdown &&
+                                pickUpDropOffLocation != null) {
+                              if (pickUpDropOffLocation == "Other" &&
+                                  customCondoName != null) {
+                                finalLocation = customCondoName!.trim();
+                              } else {
+                                finalLocation = pickUpDropOffLocation!;
                               }
-
-                              final scheduleDoc = scheduleQuery.docs.first;
-                              final scheduleId = scheduleDoc
-                                  .id; // Get the schedule document ID
-
-                              // Determine final location
-                              String finalLocation = widget.location;
-                              if (showCondoDropdown &&
-                                  pickUpDropOffLocation != null) {
-                                if (pickUpDropOffLocation == "Other" &&
-                                    customCondoName != null) {
-                                  finalLocation = customCondoName!.trim();
-                                } else {
-                                  finalLocation = pickUpDropOffLocation!;
-                                }
-                              }
-
-                              // Create booking data with scheduleId
-                              final bookingData = {
-                                "from": widget.from,
-                                "to": widget.to,
-                                "date": formattedBookingDate,
-                                "time": widget.time,
-                                "selectedSeats": widget.selectedSeats,
-                                "pricePerSeat": widget.pricePerSeat,
-                                "totalPrice":
-                                    widget.selectedSeats.length *
-                                    widget.pricePerSeat,
-                                "passengerCount": widget.selectedSeats.length,
-                                "userId": userId,
-                                "timestamp": now,
-                                "location": finalLocation,
-                                "scheduleId":
-                                    scheduleId, // Add scheduleId field
-                                "status": "confirmed", // Add booking status
-                              };
-
-                              // Save booking
-                              await FirebaseFirestore.instance
-                                  .collection('bookings')
-                                  .add(bookingData);
-
-                              // Update schedule seatsTaken
-                              final docRef = scheduleDoc.reference;
-                              final currentTaken = List<int>.from(
-                                scheduleDoc['seatsTaken'] ?? [],
-                              );
-                              final updatedTaken = [
-                                ...currentTaken,
-                                ...widget.selectedSeats,
-                              ];
-
-                              await docRef.update({
-                                "seatsTaken": updatedTaken.toSet().toList(),
-                              });
-
-                              setState(() {
-                                _isLoading = false;
-                              });
-
-                              showDialog(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title: Text("Booking Confirmed"),
-                                  content: Text(
-                                    "Your booking has been saved successfully.",
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.popUntil(
-                                        context,
-                                        (route) => route.isFirst,
-                                      ),
-                                      child: Text("OK"),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            } catch (e) {
-                              setState(() {
-                                _isLoading = false;
-                              });
-
-                              print("Booking error: $e");
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    "Failed to save booking. Please try again.",
-                                  ),
-                                ),
-                              );
                             }
+
+                            // Navigate to PaymentPage
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => PaymentPage(
+                                  from: widget.from,
+                                  to: widget.to,
+                                  time: widget.time,
+                                  date: widget.date,
+                                  selectedSeats: widget.selectedSeats,
+                                  pricePerSeat: widget.pricePerSeat,
+                                  totalPrice: totalPrice,
+                                  location: finalLocation,
+                                ),
+                              ),
+                            );
                           },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Color.fromRGBO(78, 78, 148, 1),
