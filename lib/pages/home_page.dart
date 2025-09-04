@@ -10,27 +10,90 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final List<String> locations = ["AU", "Mega", "Siam"];
+  List<String> locations = [];
   String? fromLocation;
   String? toLocation;
   DateTime? departureDate;
   List<DateTime> availableDates = [];
   bool isLoadingDates = false;
+  bool isLoadingLocations = true;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchLocations();
+  }
+
+  // Fetch unique locations from the routes collection
+  Future<void> fetchLocations() async {
+    try {
+      setState(() {
+        isLoadingLocations = true;
+      });
+
+      final QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection('routes')
+          .get();
+
+      Set<String> locationSet = {};
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final String from = data['from'] ?? '';
+        final String to = data['to'] ?? '';
+        
+        if (from.isNotEmpty) locationSet.add(from);
+        if (to.isNotEmpty) locationSet.add(to);
+      }
+
+      setState(() {
+        locations = locationSet.toList()..sort();
+        isLoadingLocations = false;
+      });
+    } catch (e) {
+      print('Error fetching locations: $e');
+      setState(() {
+        // Fallback to hardcoded locations if Firebase fails
+        locations = ["AU", "Mega", "Siam"];
+        isLoadingLocations = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load locations. Using default options.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
+  }
 
   List<String> get filteredToLocations {
     if (fromLocation == null) return [];
-    if (fromLocation == "AU") {
-      return ["Mega", "Siam"];
-    } else if (fromLocation == "Mega" || fromLocation == "Siam") {
-      return ["AU"];
-    } else {
-      return locations.where((loc) => loc != fromLocation).toList();
-    }
+    
+    // Get available destinations based on existing routes in Firebase
+    return locations.where((loc) => loc != fromLocation).toList();
   }
 
   String get routeId {
     if (fromLocation == null || toLocation == null) return '';
     return '${fromLocation!.trim().toLowerCase()}_${toLocation!.trim().toLowerCase()}';
+  }
+
+  // Check if a route exists in the database
+  Future<bool> checkRouteExists(String from, String to) async {
+    try {
+      final String routeId = '${from.trim().toLowerCase()}_${to.trim().toLowerCase()}';
+      final doc = await FirebaseFirestore.instance
+          .collection('routes')
+          .doc(routeId)
+          .get();
+      return doc.exists;
+    } catch (e) {
+      print('Error checking route existence: $e');
+      return false;
+    }
   }
 
   // Fetch available dates for the selected route
@@ -39,6 +102,26 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         availableDates = [];
       });
+      return;
+    }
+
+    // First check if the route exists
+    final bool routeExists = await checkRouteExists(fromLocation!, toLocation!);
+    if (!routeExists) {
+      setState(() {
+        availableDates = [];
+        isLoadingDates = false;
+        departureDate = null;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No route available from $fromLocation to $toLocation'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       return;
     }
 
@@ -205,181 +288,236 @@ class _HomePageState extends State<HomePage> {
               Image.asset('assets/logo.png', height: 100, width: 100),
               SizedBox(height: 32),
 
+              // Show loading indicator while fetching locations
+              // if (isLoadingLocations)
+              //   Container(
+              //     padding: EdgeInsets.all(16),
+              //     decoration: BoxDecoration(
+              //       border: Border.all(color: Colors.grey[300]!),
+              //       borderRadius: BorderRadius.circular(12),
+              //     ),
+              //     child: Row(
+              //       children: [
+              //         SizedBox(
+              //           width: 20,
+              //           height: 20,
+              //           child: CircularProgressIndicator(
+              //             strokeWidth: 2,
+              //             valueColor: AlwaysStoppedAnimation<Color>(
+              //               Color.fromRGBO(78, 78, 148, 1),
+              //             ),
+              //           ),
+              //         ),
+              //         SizedBox(width: 12),
+              //         Text(
+              //           'Loading available locations...',
+              //           style: TextStyle(
+              //             color: Colors.grey[600],
+              //             fontSize: 16,
+              //           ),
+              //         ),
+              //       ],
+              //     ),
+              //   ),
+
               // From Dropdown
-              DropdownButtonFormField<String>(
-                dropdownColor: Colors.white,
-                value: fromLocation,
-                isExpanded: true,
-                decoration: InputDecoration(
-                  labelText: "From",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Color.fromRGBO(78, 78, 148, 1),
-                      width: 2,
-                    ),
-                  ),
-                ),
-                items: locations
-                    .map((loc) => DropdownMenuItem(value: loc, child: Text(loc)))
-                    .toList(),
-                onChanged: (value) {
-                  setState(() {
-                    fromLocation = value;
-                    toLocation = null;
-                    departureDate = null;
-                    availableDates = [];
-                  });
-                },
-              ),
-              SizedBox(height: 20),
-
-              // To Dropdown
-              DropdownButtonFormField<String>(
-                dropdownColor: Colors.white,
-                value: toLocation,
-                isExpanded: true,
-                decoration: InputDecoration(
-                  labelText: "To",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Color.fromRGBO(78, 78, 148, 1),
-                      width: 2,
-                    ),
-                  ),
-                ),
-                items: filteredToLocations
-                    .map((loc) => DropdownMenuItem(value: loc, child: Text(loc)))
-                    .toList(),
-                onChanged: (value) async {
-                  setState(() {
-                    toLocation = value;
-                    departureDate = null;
-                  });
-                  
-                  // Fetch available dates when both from and to are selected
-                  if (fromLocation != null && toLocation != null) {
-                    await fetchAvailableDates();
-                  }
-                },
-              ),
-              SizedBox(height: 20),
-
-              // Departure Date Picker
-              Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey[400]!),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  title: Text(
-                    departureDate == null
-                        ? "Select departure date"
-                        : "Departure: ${departureDate?.toLocal().toString().split(' ')[0]}",
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: departureDate == null ? Colors.grey[600] : Colors.black87,
-                    ),
-                  ),
-                  trailing: isLoadingDates
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Color.fromRGBO(78, 78, 148, 1),
-                            ),
-                          ),
-                        )
-                      : Icon(Icons.calendar_today, color: Color.fromRGBO(78, 78, 148, 1)),
-                  enabled: fromLocation != null && toLocation != null && !isLoadingDates,
-                  onTap: (fromLocation != null && toLocation != null && !isLoadingDates)
-                      ? showCustomDatePicker
-                      : null,
-                ),
-              ),
-              
-              // Show available dates count
-              if (fromLocation != null && toLocation != null && !isLoadingDates)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(
-                    availableDates.isEmpty
-                        ? "No schedules available for this route"
-                        : "${availableDates.length} date${availableDates.length != 1 ? 's' : ''} available",
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: availableDates.isEmpty ? Colors.red[600] : Colors.green[600],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              
-              SizedBox(height: 24),
-
-              // Search Button
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: () {
-                    // Check if all required fields are filled
-                    if (fromLocation != null &&
-                        toLocation != null &&
-                        departureDate != null) {
-                      // All fields are filled, navigate to next page
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ScheduleTimePage(
-                            from: fromLocation!,
-                            to: toLocation!,
-                            date: departureDate!,
-                          ),
-                        ),
-                      );
-                    } else {
-                      // Show a snackbar to inform user about missing fields
-                      String message = '';
-                      if (fromLocation == null) {
-                        message = 'Please select departure location';
-                      } else if (toLocation == null) {
-                        message = 'Please select destination';
-                      } else if (departureDate == null) {
-                        message = 'Please select departure date';
-                      }
-                      
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(message),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color.fromRGBO(78, 78, 148, 1),
-                    foregroundColor: Colors.white,
-                    elevation: 3,
-                    shape: RoundedRectangleBorder(
+              if (!isLoadingLocations) ...[
+                DropdownButtonFormField<String>(
+                  dropdownColor: Colors.white,
+                  value: fromLocation,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: "From",
+                    border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Color.fromRGBO(78, 78, 148, 1),
+                        width: 2,
+                      ),
+                    ),
                   ),
-                  child: Text(
-                    "Search Schedules",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  items: locations.isEmpty 
+                    ? []
+                    : locations
+                        .map((loc) => DropdownMenuItem(value: loc, child: Text(loc)))
+                        .toList(),
+                  onChanged: locations.isEmpty ? null : (value) {
+                    setState(() {
+                      fromLocation = value;
+                      toLocation = null;
+                      departureDate = null;
+                      availableDates = [];
+                    });
+                  },
+                ),
+                SizedBox(height: 20),
+
+                // To Dropdown
+                DropdownButtonFormField<String>(
+                  dropdownColor: Colors.white,
+                  value: toLocation,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: "To",
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Color.fromRGBO(78, 78, 148, 1),
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                  items: filteredToLocations
+                      .map((loc) => DropdownMenuItem(value: loc, child: Text(loc)))
+                      .toList(),
+                  onChanged: fromLocation == null ? null : (value) async {
+                    setState(() {
+                      toLocation = value;
+                      departureDate = null;
+                    });
+                    
+                    // Fetch available dates when both from and to are selected
+                    if (fromLocation != null && toLocation != null) {
+                      await fetchAvailableDates();
+                    }
+                  },
+                ),
+                SizedBox(height: 20),
+
+                // Departure Date Picker
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey[400]!),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ListTile(
+                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    title: Text(
+                      departureDate == null
+                          ? "Select departure date"
+                          : "Departure: ${departureDate?.toLocal().toString().split(' ')[0]}",
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: departureDate == null ? Colors.grey[600] : Colors.black87,
+                      ),
+                    ),
+                    trailing: isLoadingDates
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Color.fromRGBO(78, 78, 148, 1),
+                              ),
+                            ),
+                          )
+                        : Icon(Icons.calendar_today, color: Color.fromRGBO(78, 78, 148, 1)),
+                    enabled: fromLocation != null && toLocation != null && !isLoadingDates,
+                    onTap: (fromLocation != null && toLocation != null && !isLoadingDates)
+                        ? showCustomDatePicker
+                        : null,
                   ),
                 ),
-              ),
+                
+                // Show available dates count
+                if (fromLocation != null && toLocation != null && !isLoadingDates)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text(
+                      availableDates.isEmpty
+                          ? "No schedules available for this route"
+                          : "${availableDates.length} date${availableDates.length != 1 ? 's' : ''} available",
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: availableDates.isEmpty ? Colors.red[600] : Colors.green[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                
+                SizedBox(height: 24),
+
+                // Search Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: isLoadingLocations ? null : () {
+                      // Check if all required fields are filled
+                      if (fromLocation != null &&
+                          toLocation != null &&
+                          departureDate != null) {
+                        // All fields are filled, navigate to next page
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ScheduleTimePage(
+                              from: fromLocation!,
+                              to: toLocation!,
+                              date: departureDate!,
+                            ),
+                          ),
+                        );
+                      } else {
+                        // Show a snackbar to inform user about missing fields
+                        String message = '';
+                        if (fromLocation == null) {
+                          message = 'Please select departure location';
+                        } else if (toLocation == null) {
+                          message = 'Please select destination';
+                        } else if (departureDate == null) {
+                          message = 'Please select departure date';
+                        }
+                        
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(message),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color.fromRGBO(78, 78, 148, 1),
+                      foregroundColor: Colors.white,
+                      elevation: 3,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: isLoadingLocations 
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            ),
+                            SizedBox(width: 12),
+                            Text(
+                              "Loading...",
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        )
+                      : Text(
+                          "Search",
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

@@ -27,7 +27,7 @@ class _BookingPageState extends State<BookingPage>
     _tabController = TabController(length: 2, vsync: this);
   }
 
-  Stream<List<DocumentSnapshot>> getBookingsStream(bool upcoming) {
+  Stream<List<Map<String, dynamic>>> getConsolidatedBookingsStream(bool upcoming) {
     DateTime now = DateTime.now();
 
     return FirebaseFirestore.instance
@@ -35,25 +35,82 @@ class _BookingPageState extends State<BookingPage>
         .where('userId', isEqualTo: userId)
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs.where((doc) {
+          // Group bookings by route, date, and time
+          Map<String, List<QueryDocumentSnapshot>> groupedBookings = {};
+          
+          for (var doc in snapshot.docs) {
             final data = doc.data();
-            final dateStr = data['date']; // e.g. 2025-07-03
-            final timeStr = data['time']; // e.g. 10:00 AM
+            final dateStr = data['date'];
+            final timeStr = data['time'];
+            final from = data['from'];
+            final to = data['to'];
+            
+            if (dateStr == null || timeStr == null || from == null || to == null) continue;
 
-            if (dateStr == null || timeStr == null) return false;
-
-            final fullDateTime =
-                DateTime.tryParse('$dateStr $timeStr') ??
+            final fullDateTime = DateTime.tryParse('$dateStr $timeStr') ??
                 _parseCustomDateTime(dateStr, timeStr);
 
-            if (fullDateTime == null) return false;
+            if (fullDateTime == null) continue;
 
             final bookingEndTime = fullDateTime.add(const Duration(hours: 1));
+            final isUpcoming = bookingEndTime.isAfter(now);
 
-            return upcoming
-                ? bookingEndTime.isAfter(now)
-                : bookingEndTime.isBefore(now);
-          }).toList();
+            if (isUpcoming == upcoming) {
+              // Create a unique key for grouping
+              final key = '${from}_${to}_${dateStr}_${timeStr}';
+              groupedBookings.putIfAbsent(key, () => []).add(doc);
+            }
+          }
+
+          // Convert grouped bookings to consolidated format
+          List<Map<String, dynamic>> consolidatedBookings = [];
+          
+          groupedBookings.forEach((key, docs) {
+            if (docs.isNotEmpty) {
+              // Use the first document as base
+              final baseData = docs.first.data() as Map<String, dynamic>;
+              
+              // Consolidate all seats and calculate total
+              Set<int> allSeats = {};
+              int totalPassengers = 0;
+              int totalPrice = 0;
+              List<String> bookingIds = [];
+              
+              for (var doc in docs) {
+                final data = doc.data() as Map<String, dynamic>;
+                final seats = List<int>.from(data['selectedSeats'] ?? []);
+                allSeats.addAll(seats);
+                totalPassengers += (data['passengerCount'] ?? 0) as int;
+                totalPrice += (data['totalPrice'] ?? 0) as int;
+                bookingIds.add(doc.id);
+              }
+
+              // Create consolidated booking data
+              final consolidatedData = Map<String, dynamic>.from(baseData);
+              consolidatedData['selectedSeats'] = allSeats.toList()..sort();
+              consolidatedData['passengerCount'] = totalPassengers;
+              consolidatedData['totalPrice'] = totalPrice;
+              consolidatedData['bookingIds'] = bookingIds;
+              consolidatedData['isConsolidated'] = docs.length > 1;
+              consolidatedData['originalBookingsCount'] = docs.length;
+              
+              consolidatedBookings.add(consolidatedData);
+            }
+          });
+
+          // Sort by date and time
+          consolidatedBookings.sort((a, b) {
+            final dateTimeA = DateTime.tryParse('${a['date']} ${a['time']}') ??
+                _parseCustomDateTime(a['date'], a['time']) ?? DateTime.now();
+            final dateTimeB = DateTime.tryParse('${b['date']} ${b['time']}') ??
+                _parseCustomDateTime(b['date'], b['time']) ?? DateTime.now();
+            
+            return upcoming 
+                ? dateTimeA.compareTo(dateTimeB)  // Ascending for upcoming
+                : dateTimeB.compareTo(dateTimeA); // Descending for past
+          });
+
+          return consolidatedBookings;
         });
   }
 
@@ -69,7 +126,7 @@ class _BookingPageState extends State<BookingPage>
           .split(':')
           .map(int.parse)
           .toList(); // [10, 00]
-      final isPM = timeParts[1].toLowerCase() == 'pm';
+      final isPM = timeParts.length > 1 && timeParts[1].toLowerCase() == 'pm';
 
       int hour = timeNumbers[0];
       int minute = timeNumbers[1];
@@ -83,16 +140,17 @@ class _BookingPageState extends State<BookingPage>
     }
   }
 
-  Widget buildBookingCard(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+  Widget buildBookingCard(Map<String, dynamic> data) {
     final date = data['date'] ?? '';
     final time = data['time'] ?? '';
     final from = data['from'] ?? '';
     final to = data['to'] ?? '';
     final seatsList = data['selectedSeats'];
     final seats = seatsList is List ? seatsList.join(', ') : 'N/A';
-
     final totalPrice = data['totalPrice'] ?? 0;
+    final isConsolidated = data['isConsolidated'] ?? false;
+    final originalBookingsCount = data['originalBookingsCount'] ?? 1;
+    final passengerCount = data['passengerCount'] ?? 0;
 
     return Container(
       margin: EdgeInsets.only(bottom: 16),
@@ -108,15 +166,16 @@ class _BookingPageState extends State<BookingPage>
               // Route Header
               Row(
                 children: [
-                  Text(
-                    "$from → $to",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: kColorDeep,
+                  Expanded(
+                    child: Text(
+                      "$from → $to",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: kColorDeep,
+                      ),
                     ),
                   ),
-                  Spacer(),
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
@@ -134,6 +193,38 @@ class _BookingPageState extends State<BookingPage>
                   ),
                 ],
               ),
+
+              // Consolidated booking indicator
+              if (isConsolidated) ...[
+                SizedBox(height: 8),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.merge_type,
+                        size: 16,
+                        color: Colors.blue.shade700,
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        "Consolidated ($originalBookingsCount bookings)",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
 
               SizedBox(height: 16),
 
@@ -162,11 +253,26 @@ class _BookingPageState extends State<BookingPage>
 
               SizedBox(height: 12),
 
-              _buildDetailItem(
-                Icons.airline_seat_recline_normal,
-                "Seats",
-                seats,
-                Colors.indigo.shade600,
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildDetailItem(
+                      Icons.airline_seat_recline_normal,
+                      "Seats",
+                      seats,
+                      Colors.indigo.shade600,
+                    ),
+                  ),
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: _buildDetailItem(
+                      Icons.people,
+                      "Passengers",
+                      passengerCount.toString(),
+                      Colors.teal.shade600,
+                    ),
+                  ),
+                ],
               ),
 
               SizedBox(height: 16),
@@ -251,8 +357,8 @@ class _BookingPageState extends State<BookingPage>
   }
 
   Widget buildBookingsList(bool upcoming) {
-    return StreamBuilder<List<DocumentSnapshot>>(
-      stream: getBookingsStream(upcoming),
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: getConsolidatedBookingsStream(upcoming),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Center(

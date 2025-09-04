@@ -12,6 +12,10 @@ class PaymentPage extends StatefulWidget {
   final int pricePerSeat;
   final int totalPrice;
   final String location;
+  final String? existingBookingId;
+  final bool isUpdatingExisting;
+  final List<int>? newSeatsOnly; // Add this to track only new seats
+  final int? newSeatsPrice; // Add this to track price for new seats only
 
   const PaymentPage({
     super.key,
@@ -23,6 +27,10 @@ class PaymentPage extends StatefulWidget {
     required this.pricePerSeat,
     required this.totalPrice,
     required this.location,
+    this.existingBookingId,
+    this.isUpdatingExisting = false,
+    this.newSeatsOnly, // Add this
+    this.newSeatsPrice, // Add this
   });
 
   @override
@@ -50,6 +58,20 @@ class _PaymentPageState extends State<PaymentPage> {
   String get formattedDate =>
       "${widget.date.day}/${widget.date.month}/${widget.date.year}";
 
+  // Get the seats to display (new seats only if updating, all seats if new booking)
+  List<int> get seatsToDisplay {
+    return widget.isUpdatingExisting && widget.newSeatsOnly != null
+        ? widget.newSeatsOnly!
+        : widget.selectedSeats;
+  }
+
+  // Get the price to display (new seats price only if updating, total price if new booking)
+  int get priceToDisplay {
+    return widget.isUpdatingExisting && widget.newSeatsPrice != null
+        ? widget.newSeatsPrice!
+        : widget.totalPrice;
+  }
+
   Future<void> _processPayment() async {
     // Validate form fields
     if (_cardNumberController.text.trim().isEmpty ||
@@ -71,54 +93,102 @@ class _PaymentPageState extends State<PaymentPage> {
       final userId = user?.uid;
       final now = Timestamp.now();
 
-      // First, find and get the schedule document to get its ID
-      final routeId = "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
-      final formattedBookingDate =
-          "${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}";
+      if (widget.isUpdatingExisting && widget.existingBookingId != null) {
+        // Update existing booking with ALL seats (existing + new)
+        await FirebaseFirestore.instance
+            .collection('bookings')
+            .doc(widget.existingBookingId!)
+            .update({
+              'selectedSeats':
+                  widget.selectedSeats, // All seats (existing + new)
+              'passengerCount': widget.selectedSeats.length,
+              'totalPrice': widget.totalPrice, // Total price for all seats
+              'location': widget.location,
+              'timestamp': now,
+              'paymentMethod': "credit_card",
+              'paymentStatus': "paid",
+            });
 
-      final scheduleQuery = await FirebaseFirestore.instance
-          .collection('schedules')
-          .where('routeId', isEqualTo: routeId)
-          .where('date', isEqualTo: formattedBookingDate)
-          .where('time', isEqualTo: widget.time)
-          .limit(1)
-          .get();
+        // Update schedule seatsTaken (only add the NEW seats)
+        if (widget.newSeatsOnly != null && widget.newSeatsOnly!.isNotEmpty) {
+          final routeId =
+              "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
+          final formattedBookingDate =
+              "${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}";
 
-      if (scheduleQuery.docs.isEmpty) {
-        throw Exception('Schedule not found');
+          final scheduleQuery = await FirebaseFirestore.instance
+              .collection('schedules')
+              .where('routeId', isEqualTo: routeId)
+              .where('date', isEqualTo: formattedBookingDate)
+              .where('time', isEqualTo: widget.time)
+              .limit(1)
+              .get();
+
+          if (scheduleQuery.docs.isNotEmpty) {
+            final scheduleDoc = scheduleQuery.docs.first;
+            final currentTaken = List<int>.from(
+              scheduleDoc['seatsTaken'] ?? [],
+            );
+            final updatedTaken = [...currentTaken, ...widget.newSeatsOnly!];
+
+            await scheduleDoc.reference.update({
+              "seatsTaken": updatedTaken.toSet().toList(),
+            });
+          }
+        }
+      } else {
+        // Create new booking (existing logic)
+        final routeId =
+            "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
+        final formattedBookingDate =
+            "${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}";
+
+        final scheduleQuery = await FirebaseFirestore.instance
+            .collection('schedules')
+            .where('routeId', isEqualTo: routeId)
+            .where('date', isEqualTo: formattedBookingDate)
+            .where('time', isEqualTo: widget.time)
+            .limit(1)
+            .get();
+
+        if (scheduleQuery.docs.isEmpty) {
+          throw Exception('Schedule not found');
+        }
+
+        final scheduleDoc = scheduleQuery.docs.first;
+        final scheduleId = scheduleDoc.id;
+
+        // Create booking data with scheduleId
+        final bookingData = {
+          "from": widget.from,
+          "to": widget.to,
+          "date": formattedBookingDate,
+          "time": widget.time,
+          "selectedSeats": widget.selectedSeats,
+          "pricePerSeat": widget.pricePerSeat,
+          "totalPrice": widget.totalPrice,
+          "passengerCount": widget.selectedSeats.length,
+          "userId": userId,
+          "timestamp": now,
+          "location": widget.location,
+          "scheduleId": scheduleId,
+          "status": "confirmed",
+          "paymentMethod": "credit_card",
+          "paymentStatus": "paid",
+        };
+
+        // Save booking
+        await FirebaseFirestore.instance
+            .collection('bookings')
+            .add(bookingData);
+
+        // Update schedule seatsTaken
+        final docRef = scheduleDoc.reference;
+        final currentTaken = List<int>.from(scheduleDoc['seatsTaken'] ?? []);
+        final updatedTaken = [...currentTaken, ...widget.selectedSeats];
+
+        await docRef.update({"seatsTaken": updatedTaken.toSet().toList()});
       }
-
-      final scheduleDoc = scheduleQuery.docs.first;
-      final scheduleId = scheduleDoc.id;
-
-      // Create booking data with scheduleId
-      final bookingData = {
-        "from": widget.from,
-        "to": widget.to,
-        "date": formattedBookingDate,
-        "time": widget.time,
-        "selectedSeats": widget.selectedSeats,
-        "pricePerSeat": widget.pricePerSeat,
-        "totalPrice": widget.totalPrice,
-        "passengerCount": widget.selectedSeats.length,
-        "userId": userId,
-        "timestamp": now,
-        "location": widget.location,
-        "scheduleId": scheduleId,
-        "status": "confirmed",
-        "paymentMethod": "credit_card",
-        "paymentStatus": "paid",
-      };
-
-      // Save booking
-      await FirebaseFirestore.instance.collection('bookings').add(bookingData);
-
-      // Update schedule seatsTaken
-      final docRef = scheduleDoc.reference;
-      final currentTaken = List<int>.from(scheduleDoc['seatsTaken'] ?? []);
-      final updatedTaken = [...currentTaken, ...widget.selectedSeats];
-
-      await docRef.update({"seatsTaken": updatedTaken.toSet().toList()});
 
       setState(() {
         _isProcessing = false;
@@ -136,11 +206,17 @@ class _PaymentPageState extends State<PaymentPage> {
             children: [
               Icon(Icons.check_circle, color: Colors.green, size: 28),
               SizedBox(width: 12),
-              Text('Payment Successful'),
+              Text(
+                widget.isUpdatingExisting
+                    ? 'Seats Added'
+                    : 'Payment Successful',
+              ),
             ],
           ),
           content: Text(
-            'Your booking has been confirmed and payment processed successfully.',
+            widget.isUpdatingExisting
+                ? 'Additional seats have been added to your booking and payment processed successfully.'
+                : 'Your booking has been confirmed and payment processed successfully.',
           ),
           actions: [
             ElevatedButton(
@@ -163,7 +239,7 @@ class _PaymentPageState extends State<PaymentPage> {
         _isProcessing = false;
       });
 
-      print("Booking error: $e");
+      print("Payment error: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Failed to process payment. Please try again.")),
       );
@@ -233,8 +309,8 @@ class _PaymentPageState extends State<PaymentPage> {
                         _buildSummaryRow('Date', formattedDate),
                         _buildSummaryRow('Time', widget.time),
                         _buildSummaryRow(
-                          'Seats',
-                          widget.selectedSeats.join(', '),
+                          widget.isUpdatingExisting ? 'New Seats' : 'Seats',
+                          seatsToDisplay.join(', '),
                         ),
                         _buildSummaryRow('Location', widget.location),
                         Divider(height: 20),
@@ -242,7 +318,7 @@ class _PaymentPageState extends State<PaymentPage> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Total Amount',
+                              'Amount',
                               style: GoogleFonts.roboto(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -250,7 +326,7 @@ class _PaymentPageState extends State<PaymentPage> {
                               ),
                             ),
                             Text(
-                              '${widget.totalPrice} ฿',
+                              '$priceToDisplay ฿',
                               style: GoogleFonts.roboto(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
@@ -337,7 +413,6 @@ class _PaymentPageState extends State<PaymentPage> {
                     ),
                   ),
                 ),
-
                 SizedBox(height: 80), // Space for floating button
               ],
             ),

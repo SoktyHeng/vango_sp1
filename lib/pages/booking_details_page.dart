@@ -8,6 +8,9 @@ class BookingDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isConsolidated = booking['isConsolidated'] ?? false;
+    final originalBookingsCount = booking['originalBookingsCount'] ?? 1;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -26,6 +29,72 @@ class BookingDetailPage extends StatelessWidget {
           padding: const EdgeInsets.all(20.0),
           child: Column(
             children: [
+              // Consolidated Booking Info (if applicable)
+              if (isConsolidated) ...[
+                Card(
+                  color: Colors.blue.shade50,
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.merge_type,
+                              color: Colors.blue.shade700,
+                              size: 24,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Consolidated Booking',
+                              style: GoogleFonts.roboto(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue.shade800,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: Colors.blue.shade600,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'This booking combines $originalBookingsCount separate bookings for the same trip.',
+                                  style: GoogleFonts.roboto(
+                                    fontSize: 14,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
               // Trip Information Card
               Card(
                 color: Colors.white,
@@ -116,6 +185,46 @@ class BookingDetailPage extends StatelessWidget {
                         "Passengers",
                         booking['passengerCount'].toString(),
                       ),
+                      
+                      // Show booking breakdown for consolidated bookings
+                      if (isConsolidated && booking['bookingIds'] != null) ...[
+                        const SizedBox(height: 12),
+                        const Divider(),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.receipt_long,
+                              size: 16,
+                              color: Colors.grey[600],
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Booking Breakdown:',
+                              style: GoogleFonts.roboto(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '$originalBookingsCount separate bookings merged into one',
+                            style: GoogleFonts.roboto(
+                              fontSize: 13,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -159,6 +268,22 @@ class BookingDetailPage extends StatelessWidget {
                         "Price/Seat",
                         "${booking['pricePerSeat']} ฿",
                       ),
+                      
+                      // Show calculation breakdown for consolidated bookings
+                      if (isConsolidated) ...[
+                        const SizedBox(height: 8),
+                        _detailRow(
+                          Icons.calculate,
+                          "Total Seats",
+                          "${(booking['selectedSeats'] as List).length}",
+                        ),
+                        _detailRow(
+                          Icons.receipt,
+                          "Calculation",
+                          "${(booking['selectedSeats'] as List).length} × ${booking['pricePerSeat']} ฿",
+                        ),
+                      ],
+                      
                       const Divider(height: 20),
                       Container(
                         padding: const EdgeInsets.all(12),
