@@ -15,12 +15,32 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isSignInPressed = false;
+  bool _isLoading = false; // Add loading state
 
   Future signIn() async {
-    await FirebaseAuth.instance.signInWithEmailAndPassword(
-      email: _emailController.text.trim(),
-      password: _passwordController.text.trim(),
-    );
+    setState(() {
+      _isLoading = true; // Start loading
+    });
+
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+    } catch (e) {
+      // Handle error (optional: show error message)
+      print('Login error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Login failed. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false; // Stop loading
+      });
+    }
   }
 
   @override
@@ -134,35 +154,52 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 SizedBox(height: 15),
 
-                // Sign In Button with animation
+                // Sign In Button with animation and loading indicator
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 25),
                   child: AnimatedScale(
                     scale: _isSignInPressed ? 0.95 : 1.0,
                     duration: const Duration(milliseconds: 120),
                     child: GestureDetector(
-                      onTap: () async {
-                        setState(() => _isSignInPressed = true);
-                        await Future.delayed(const Duration(milliseconds: 120));
-                        setState(() => _isSignInPressed = false);
-                        await signIn();
-                      },
+                      onTap: _isLoading
+                          ? null
+                          : () async {
+                              setState(() => _isSignInPressed = true);
+                              await Future.delayed(
+                                const Duration(milliseconds: 120),
+                              );
+                              setState(() => _isSignInPressed = false);
+                              await signIn();
+                            },
                       child: Container(
                         height: 60,
                         padding: EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: Color.fromRGBO(78, 78, 148, 1),
+                          color: _isLoading
+                              ? Colors.grey[400]
+                              : Color.fromRGBO(78, 78, 148, 1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Center(
-                          child: Text(
-                            'Sign In',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              fontSize: 16,
-                            ),
-                          ),
+                          child: _isLoading
+                              ? SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  'Sign In',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                  ),
+                                ),
                         ),
                       ),
                     ),

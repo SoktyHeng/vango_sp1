@@ -18,14 +18,27 @@ class _HomePageState extends State<HomePage> {
   bool isLoadingDates = false;
   bool isLoadingLocations = true;
 
+  // Add static cache
+  static List<String>? _cachedLocations;
+  static bool _hasLoadedLocations = false;
+
   @override
   void initState() {
     super.initState();
     fetchLocations();
   }
 
-  // Fetch unique locations from the routes collection
+  // Modified fetchLocations with caching
   Future<void> fetchLocations() async {
+    // Use cached data if available
+    if (_hasLoadedLocations && _cachedLocations != null) {
+      setState(() {
+        locations = _cachedLocations!;
+        isLoadingLocations = false;
+      });
+      return;
+    }
+
     try {
       setState(() {
         isLoadingLocations = true;
@@ -41,23 +54,33 @@ class _HomePageState extends State<HomePage> {
         final data = doc.data() as Map<String, dynamic>;
         final String from = data['from'] ?? '';
         final String to = data['to'] ?? '';
-        
+
         if (from.isNotEmpty) locationSet.add(from);
         if (to.isNotEmpty) locationSet.add(to);
       }
 
+      final locationList = locationSet.toList()..sort();
+
+      // Cache the results
+      _cachedLocations = locationList;
+      _hasLoadedLocations = true;
+
       setState(() {
-        locations = locationSet.toList()..sort();
+        locations = locationList;
         isLoadingLocations = false;
       });
     } catch (e) {
       print('Error fetching locations: $e');
+
+      // Cache fallback data too
+      _cachedLocations = ["AU", "Mega", "Siam"];
+      _hasLoadedLocations = true;
+
       setState(() {
-        // Fallback to hardcoded locations if Firebase fails
-        locations = ["AU", "Mega", "Siam"];
+        locations = _cachedLocations!;
         isLoadingLocations = false;
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -71,7 +94,7 @@ class _HomePageState extends State<HomePage> {
 
   List<String> get filteredToLocations {
     if (fromLocation == null) return [];
-    
+
     // Get available destinations based on existing routes in Firebase
     return locations.where((loc) => loc != fromLocation).toList();
   }
@@ -84,7 +107,8 @@ class _HomePageState extends State<HomePage> {
   // Check if a route exists in the database
   Future<bool> checkRouteExists(String from, String to) async {
     try {
-      final String routeId = '${from.trim().toLowerCase()}_${to.trim().toLowerCase()}';
+      final String routeId =
+          '${from.trim().toLowerCase()}_${to.trim().toLowerCase()}';
       final doc = await FirebaseFirestore.instance
           .collection('routes')
           .doc(routeId)
@@ -113,11 +137,13 @@ class _HomePageState extends State<HomePage> {
         isLoadingDates = false;
         departureDate = null;
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('No route available from $fromLocation to $toLocation'),
+            content: Text(
+              'No route available from $fromLocation to $toLocation',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -148,19 +174,18 @@ class _HomePageState extends State<HomePage> {
         final data = doc.data() as Map<String, dynamic>;
         final String dateStr = data['date'] ?? '';
         final String timeStr = data['time'] ?? '';
-        
+
         if (dateStr.isNotEmpty && timeStr.isNotEmpty) {
           try {
             // Parse the date string (format: yyyy-MM-dd)
             final DateTime scheduleDate = DateTime.parse(dateStr);
-            
+
             // Only include future dates within the 90-day range
-            if (scheduleDate.isAfter(now.subtract(Duration(days: 1))) && 
+            if (scheduleDate.isAfter(now.subtract(Duration(days: 1))) &&
                 scheduleDate.isBefore(maxDate.add(Duration(days: 1)))) {
-              
               // Check if the time is still available (for today's date)
-              if (scheduleDate.year == now.year && 
-                  scheduleDate.month == now.month && 
+              if (scheduleDate.year == now.year &&
+                  scheduleDate.month == now.month &&
                   scheduleDate.day == now.day) {
                 // For today, check if the time hasn't passed
                 if (isTimeAvailable(timeStr)) {
@@ -187,7 +212,7 @@ class _HomePageState extends State<HomePage> {
         availableDates = [];
         isLoadingDates = false;
       });
-      
+
       // Show error message to user
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -203,7 +228,7 @@ class _HomePageState extends State<HomePage> {
   // Check if a time slot is still available (copied from schedule_time_page.dart)
   bool isTimeAvailable(String timeString) {
     final now = DateTime.now();
-    
+
     try {
       // Parse the time string (e.g., "4:00 PM" or "16:00")
       final timeFormat = timeString.contains('PM') || timeString.contains('AM')
@@ -250,17 +275,19 @@ class _HomePageState extends State<HomePage> {
       lastDate: lastDate,
       selectableDayPredicate: (DateTime day) {
         // Only allow selection of dates that are in the availableDates list
-        return availableDates.any((date) =>
-            date.year == day.year &&
-            date.month == day.month &&
-            date.day == day.day);
+        return availableDates.any(
+          (date) =>
+              date.year == day.year &&
+              date.month == day.month &&
+              date.day == day.day,
+        );
       },
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(
-              primary: Color.fromRGBO(78, 78, 148, 1),
-            ),
+            colorScheme: Theme.of(
+              context,
+            ).colorScheme.copyWith(primary: Color.fromRGBO(78, 78, 148, 1)),
           ),
           child: child!,
         );
@@ -339,19 +366,26 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                   ),
-                  items: locations.isEmpty 
-                    ? []
-                    : locations
-                        .map((loc) => DropdownMenuItem(value: loc, child: Text(loc)))
-                        .toList(),
-                  onChanged: locations.isEmpty ? null : (value) {
-                    setState(() {
-                      fromLocation = value;
-                      toLocation = null;
-                      departureDate = null;
-                      availableDates = [];
-                    });
-                  },
+                  items: locations.isEmpty
+                      ? []
+                      : locations
+                            .map(
+                              (loc) => DropdownMenuItem(
+                                value: loc,
+                                child: Text(loc),
+                              ),
+                            )
+                            .toList(),
+                  onChanged: locations.isEmpty
+                      ? null
+                      : (value) {
+                          setState(() {
+                            fromLocation = value;
+                            toLocation = null;
+                            departureDate = null;
+                            availableDates = [];
+                          });
+                        },
                 ),
                 SizedBox(height: 20),
 
@@ -374,19 +408,23 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                   items: filteredToLocations
-                      .map((loc) => DropdownMenuItem(value: loc, child: Text(loc)))
+                      .map(
+                        (loc) => DropdownMenuItem(value: loc, child: Text(loc)),
+                      )
                       .toList(),
-                  onChanged: fromLocation == null ? null : (value) async {
-                    setState(() {
-                      toLocation = value;
-                      departureDate = null;
-                    });
-                    
-                    // Fetch available dates when both from and to are selected
-                    if (fromLocation != null && toLocation != null) {
-                      await fetchAvailableDates();
-                    }
-                  },
+                  onChanged: fromLocation == null
+                      ? null
+                      : (value) async {
+                          setState(() {
+                            toLocation = value;
+                            departureDate = null;
+                          });
+
+                          // Fetch available dates when both from and to are selected
+                          if (fromLocation != null && toLocation != null) {
+                            await fetchAvailableDates();
+                          }
+                        },
                 ),
                 SizedBox(height: 20),
 
@@ -397,14 +435,19 @@ class _HomePageState extends State<HomePage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: ListTile(
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     title: Text(
                       departureDate == null
                           ? "Select departure date"
                           : "Departure: ${departureDate?.toLocal().toString().split(' ')[0]}",
                       style: TextStyle(
                         fontSize: 16,
-                        color: departureDate == null ? Colors.grey[600] : Colors.black87,
+                        color: departureDate == null
+                            ? Colors.grey[600]
+                            : Colors.black87,
                       ),
                     ),
                     trailing: isLoadingDates
@@ -418,16 +461,27 @@ class _HomePageState extends State<HomePage> {
                               ),
                             ),
                           )
-                        : Icon(Icons.calendar_today, color: Color.fromRGBO(78, 78, 148, 1)),
-                    enabled: fromLocation != null && toLocation != null && !isLoadingDates,
-                    onTap: (fromLocation != null && toLocation != null && !isLoadingDates)
+                        : Icon(
+                            Icons.calendar_today,
+                            color: Color.fromRGBO(78, 78, 148, 1),
+                          ),
+                    enabled:
+                        fromLocation != null &&
+                        toLocation != null &&
+                        !isLoadingDates,
+                    onTap:
+                        (fromLocation != null &&
+                            toLocation != null &&
+                            !isLoadingDates)
                         ? showCustomDatePicker
                         : null,
                   ),
                 ),
-                
+
                 // Show available dates count
-                if (fromLocation != null && toLocation != null && !isLoadingDates)
+                if (fromLocation != null &&
+                    toLocation != null &&
+                    !isLoadingDates)
                   Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Text(
@@ -436,12 +490,14 @@ class _HomePageState extends State<HomePage> {
                           : "${availableDates.length} date${availableDates.length != 1 ? 's' : ''} available",
                       style: TextStyle(
                         fontSize: 14,
-                        color: availableDates.isEmpty ? Colors.red[600] : Colors.green[600],
+                        color: availableDates.isEmpty
+                            ? Colors.red[600]
+                            : Colors.green[600],
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
-                
+
                 SizedBox(height: 24),
 
                 // Search Button
@@ -449,41 +505,43 @@ class _HomePageState extends State<HomePage> {
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
-                    onPressed: isLoadingLocations ? null : () {
-                      // Check if all required fields are filled
-                      if (fromLocation != null &&
-                          toLocation != null &&
-                          departureDate != null) {
-                        // All fields are filled, navigate to next page
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ScheduleTimePage(
-                              from: fromLocation!,
-                              to: toLocation!,
-                              date: departureDate!,
-                            ),
-                          ),
-                        );
-                      } else {
-                        // Show a snackbar to inform user about missing fields
-                        String message = '';
-                        if (fromLocation == null) {
-                          message = 'Please select departure location';
-                        } else if (toLocation == null) {
-                          message = 'Please select destination';
-                        } else if (departureDate == null) {
-                          message = 'Please select departure date';
-                        }
-                        
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(message),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    },
+                    onPressed: isLoadingLocations
+                        ? null
+                        : () {
+                            // Check if all required fields are filled
+                            if (fromLocation != null &&
+                                toLocation != null &&
+                                departureDate != null) {
+                              // All fields are filled, navigate to next page
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ScheduleTimePage(
+                                    from: fromLocation!,
+                                    to: toLocation!,
+                                    date: departureDate!,
+                                  ),
+                                ),
+                              );
+                            } else {
+                              // Show a snackbar to inform user about missing fields
+                              String message = '';
+                              if (fromLocation == null) {
+                                message = 'Please select departure location';
+                              } else if (toLocation == null) {
+                                message = 'Please select destination';
+                              } else if (departureDate == null) {
+                                message = 'Please select departure date';
+                              }
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(message),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Color.fromRGBO(78, 78, 148, 1),
                       foregroundColor: Colors.white,
@@ -492,29 +550,37 @@ class _HomePageState extends State<HomePage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: isLoadingLocations 
-                      ? Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    child: isLoadingLocations
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
                               ),
+                              SizedBox(width: 12),
+                              Text(
+                                "Loading...",
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Text(
+                            "Search",
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
                             ),
-                            SizedBox(width: 12),
-                            Text(
-                              "Loading...",
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        )
-                      : Text(
-                          "Search",
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                        ),
+                          ),
                   ),
                 ),
               ],

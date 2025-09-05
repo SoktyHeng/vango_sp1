@@ -211,7 +211,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
           style: TextStyle(
             color: Colors.black,
             fontSize: 20,
-            fontWeight: FontWeight.w600,
           ),
         ),
         backgroundColor: Colors.white,

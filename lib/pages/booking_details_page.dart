@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class BookingDetailPage extends StatelessWidget {
   final Map<String, dynamic> booking;
@@ -16,10 +15,7 @@ class BookingDetailPage extends StatelessWidget {
       appBar: AppBar(
         title: Text(
           'Booking Details',
-          style: GoogleFonts.roboto(
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-          ),
+          style: TextStyle(fontSize: 20),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -52,7 +48,7 @@ class BookingDetailPage extends StatelessWidget {
                             const SizedBox(width: 8),
                             Text(
                               'Consolidated Booking',
-                              style: GoogleFonts.roboto(
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.blue.shade800,
@@ -79,7 +75,7 @@ class BookingDetailPage extends StatelessWidget {
                               Expanded(
                                 child: Text(
                                   'This booking combines $originalBookingsCount separate bookings for the same trip.',
-                                  style: GoogleFonts.roboto(
+                                  style: TextStyle(
                                     fontSize: 14,
                                     color: Colors.blue.shade700,
                                   ),
@@ -117,7 +113,7 @@ class BookingDetailPage extends StatelessWidget {
                           const SizedBox(width: 8),
                           Text(
                             'Trip Information',
-                            style: GoogleFonts.roboto(
+                            style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: Colors.grey[800],
@@ -166,7 +162,7 @@ class BookingDetailPage extends StatelessWidget {
                           const SizedBox(width: 8),
                           Text(
                             'Seat Details',
-                            style: GoogleFonts.roboto(
+                            style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: Colors.grey[800],
@@ -185,7 +181,7 @@ class BookingDetailPage extends StatelessWidget {
                         "Passengers",
                         booking['passengerCount'].toString(),
                       ),
-                      
+
                       // Show booking breakdown for consolidated bookings
                       if (isConsolidated && booking['bookingIds'] != null) ...[
                         const SizedBox(height: 12),
@@ -201,7 +197,7 @@ class BookingDetailPage extends StatelessWidget {
                             const SizedBox(width: 8),
                             Text(
                               'Booking Breakdown:',
-                              style: GoogleFonts.roboto(
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
                                 color: Colors.grey[700],
@@ -218,7 +214,7 @@ class BookingDetailPage extends StatelessWidget {
                           ),
                           child: Text(
                             '$originalBookingsCount separate bookings merged into one',
-                            style: GoogleFonts.roboto(
+                            style: TextStyle(
                               fontSize: 13,
                               color: Colors.grey[600],
                             ),
@@ -254,7 +250,7 @@ class BookingDetailPage extends StatelessWidget {
                           const SizedBox(width: 8),
                           Text(
                             'Payment Details',
-                            style: GoogleFonts.roboto(
+                            style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: Colors.grey[800],
@@ -268,7 +264,7 @@ class BookingDetailPage extends StatelessWidget {
                         "Price/Seat",
                         "${booking['pricePerSeat']} ฿",
                       ),
-                      
+
                       // Show calculation breakdown for consolidated bookings
                       if (isConsolidated) ...[
                         const SizedBox(height: 8),
@@ -283,7 +279,7 @@ class BookingDetailPage extends StatelessWidget {
                           "${(booking['selectedSeats'] as List).length} × ${booking['pricePerSeat']} ฿",
                         ),
                       ],
-                      
+
                       const Divider(height: 20),
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -296,7 +292,7 @@ class BookingDetailPage extends StatelessWidget {
                           children: [
                             Text(
                               'Total Amount',
-                              style: GoogleFonts.roboto(
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.grey[800],
@@ -304,7 +300,7 @@ class BookingDetailPage extends StatelessWidget {
                             ),
                             Text(
                               "${booking['totalPrice']} ฿",
-                              style: GoogleFonts.roboto(
+                              style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
                                 color: const Color.fromRGBO(78, 78, 148, 1),
@@ -335,7 +331,7 @@ class BookingDetailPage extends StatelessWidget {
             width: 100,
             child: Text(
               title,
-              style: GoogleFonts.roboto(
+              style: TextStyle(
                 fontWeight: FontWeight.w500,
                 fontSize: 14,
                 color: Colors.grey[700],
@@ -345,7 +341,7 @@ class BookingDetailPage extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: GoogleFonts.roboto(
+              style: TextStyle(
                 fontSize: 15,
                 color: Colors.grey[800],
                 fontWeight: FontWeight.w400,

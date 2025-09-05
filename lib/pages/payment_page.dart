@@ -254,7 +254,7 @@ class _PaymentPageState extends State<PaymentPage> {
         title: Text(
           'Payment',
           style: GoogleFonts.roboto(
-            fontWeight: FontWeight.w600,
+            // fontWeight: FontWeight.w600,
             color: Colors.black87,
             fontSize: 20,
           ),
@@ -482,7 +482,6 @@ class _PaymentPageState extends State<PaymentPage> {
               color: Colors.white,
             ),
           ),
-          icon: Icon(Icons.payment, color: Colors.white),
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,

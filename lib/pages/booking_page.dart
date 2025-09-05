@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:van_go/pages/booking_details_page.dart';
+import 'booking_details_page.dart';
+import 'location_tracking_page.dart';
 
 class BookingPage extends StatefulWidget {
   const BookingPage({super.key});
@@ -27,7 +28,7 @@ class _BookingPageState extends State<BookingPage>
     _tabController = TabController(length: 2, vsync: this);
   }
 
-  Stream<List<Map<String, dynamic>>> getConsolidatedBookingsStream(bool upcoming) {
+  Stream<List<DocumentSnapshot>> getBookingsStream(bool upcoming) {
     DateTime now = DateTime.now();
 
     return FirebaseFirestore.instance
@@ -35,82 +36,25 @@ class _BookingPageState extends State<BookingPage>
         .where('userId', isEqualTo: userId)
         .snapshots()
         .map((snapshot) {
-          // Group bookings by route, date, and time
-          Map<String, List<QueryDocumentSnapshot>> groupedBookings = {};
-          
-          for (var doc in snapshot.docs) {
+          return snapshot.docs.where((doc) {
             final data = doc.data();
-            final dateStr = data['date'];
-            final timeStr = data['time'];
-            final from = data['from'];
-            final to = data['to'];
-            
-            if (dateStr == null || timeStr == null || from == null || to == null) continue;
+            final dateStr = data['date']; // e.g. 2025-07-03
+            final timeStr = data['time']; // e.g. 10:00 AM
 
-            final fullDateTime = DateTime.tryParse('$dateStr $timeStr') ??
+            if (dateStr == null || timeStr == null) return false;
+
+            final fullDateTime =
+                DateTime.tryParse('$dateStr $timeStr') ??
                 _parseCustomDateTime(dateStr, timeStr);
 
-            if (fullDateTime == null) continue;
+            if (fullDateTime == null) return false;
 
             final bookingEndTime = fullDateTime.add(const Duration(hours: 1));
-            final isUpcoming = bookingEndTime.isAfter(now);
 
-            if (isUpcoming == upcoming) {
-              // Create a unique key for grouping
-              final key = '${from}_${to}_${dateStr}_${timeStr}';
-              groupedBookings.putIfAbsent(key, () => []).add(doc);
-            }
-          }
-
-          // Convert grouped bookings to consolidated format
-          List<Map<String, dynamic>> consolidatedBookings = [];
-          
-          groupedBookings.forEach((key, docs) {
-            if (docs.isNotEmpty) {
-              // Use the first document as base
-              final baseData = docs.first.data() as Map<String, dynamic>;
-              
-              // Consolidate all seats and calculate total
-              Set<int> allSeats = {};
-              int totalPassengers = 0;
-              int totalPrice = 0;
-              List<String> bookingIds = [];
-              
-              for (var doc in docs) {
-                final data = doc.data() as Map<String, dynamic>;
-                final seats = List<int>.from(data['selectedSeats'] ?? []);
-                allSeats.addAll(seats);
-                totalPassengers += (data['passengerCount'] ?? 0) as int;
-                totalPrice += (data['totalPrice'] ?? 0) as int;
-                bookingIds.add(doc.id);
-              }
-
-              // Create consolidated booking data
-              final consolidatedData = Map<String, dynamic>.from(baseData);
-              consolidatedData['selectedSeats'] = allSeats.toList()..sort();
-              consolidatedData['passengerCount'] = totalPassengers;
-              consolidatedData['totalPrice'] = totalPrice;
-              consolidatedData['bookingIds'] = bookingIds;
-              consolidatedData['isConsolidated'] = docs.length > 1;
-              consolidatedData['originalBookingsCount'] = docs.length;
-              
-              consolidatedBookings.add(consolidatedData);
-            }
-          });
-
-          // Sort by date and time
-          consolidatedBookings.sort((a, b) {
-            final dateTimeA = DateTime.tryParse('${a['date']} ${a['time']}') ??
-                _parseCustomDateTime(a['date'], a['time']) ?? DateTime.now();
-            final dateTimeB = DateTime.tryParse('${b['date']} ${b['time']}') ??
-                _parseCustomDateTime(b['date'], b['time']) ?? DateTime.now();
-            
-            return upcoming 
-                ? dateTimeA.compareTo(dateTimeB)  // Ascending for upcoming
-                : dateTimeB.compareTo(dateTimeA); // Descending for past
-          });
-
-          return consolidatedBookings;
+            return upcoming
+                ? bookingEndTime.isAfter(now)
+                : bookingEndTime.isBefore(now);
+          }).toList();
         });
   }
 
@@ -126,7 +70,7 @@ class _BookingPageState extends State<BookingPage>
           .split(':')
           .map(int.parse)
           .toList(); // [10, 00]
-      final isPM = timeParts.length > 1 && timeParts[1].toLowerCase() == 'pm';
+      final isPM = timeParts[1].toLowerCase() == 'pm';
 
       int hour = timeNumbers[0];
       int minute = timeNumbers[1];
@@ -140,17 +84,28 @@ class _BookingPageState extends State<BookingPage>
     }
   }
 
-  Widget buildBookingCard(Map<String, dynamic> data) {
+  // TEMPORARY TEST VERSION - Shows button for all bookings with scheduleId
+  bool _isBookingTrackable(Map<String, dynamic> bookingData) {
+    final scheduleId = bookingData['scheduleId'];
+    print('Testing: Schedule ID = $scheduleId');
+
+    // For testing - show button for any booking that has a scheduleId
+    return scheduleId != null && scheduleId.toString().isNotEmpty;
+  }
+
+  Widget buildBookingCard(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
     final date = data['date'] ?? '';
     final time = data['time'] ?? '';
     final from = data['from'] ?? '';
     final to = data['to'] ?? '';
     final seatsList = data['selectedSeats'];
     final seats = seatsList is List ? seatsList.join(', ') : 'N/A';
+    final scheduleId = data['scheduleId'] ?? '';
     final totalPrice = data['totalPrice'] ?? 0;
-    final isConsolidated = data['isConsolidated'] ?? false;
-    final originalBookingsCount = data['originalBookingsCount'] ?? 1;
-    final passengerCount = data['passengerCount'] ?? 0;
+
+    // Check if this booking is trackable
+    final isTrackable = _isBookingTrackable(data);
 
     return Container(
       margin: EdgeInsets.only(bottom: 16),
@@ -166,16 +121,15 @@ class _BookingPageState extends State<BookingPage>
               // Route Header
               Row(
                 children: [
-                  Expanded(
-                    child: Text(
-                      "$from → $to",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: kColorDeep,
-                      ),
+                  Text(
+                    "$from → $to",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: kColorDeep,
                     ),
                   ),
+                  Spacer(),
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
@@ -193,38 +147,6 @@ class _BookingPageState extends State<BookingPage>
                   ),
                 ],
               ),
-
-              // Consolidated booking indicator
-              if (isConsolidated) ...[
-                SizedBox(height: 8),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.merge_type,
-                        size: 16,
-                        color: Colors.blue.shade700,
-                      ),
-                      SizedBox(width: 4),
-                      Text(
-                        "Consolidated ($originalBookingsCount bookings)",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.blue.shade700,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
 
               SizedBox(height: 16),
 
@@ -253,56 +175,106 @@ class _BookingPageState extends State<BookingPage>
 
               SizedBox(height: 12),
 
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildDetailItem(
-                      Icons.airline_seat_recline_normal,
-                      "Seats",
-                      seats,
-                      Colors.indigo.shade600,
-                    ),
-                  ),
-                  SizedBox(width: 16),
-                  Expanded(
-                    child: _buildDetailItem(
-                      Icons.people,
-                      "Passengers",
-                      passengerCount.toString(),
-                      Colors.teal.shade600,
-                    ),
-                  ),
-                ],
+              _buildDetailItem(
+                Icons.airline_seat_recline_normal,
+                "Seats",
+                seats,
+                Colors.indigo.shade600,
               ),
 
               SizedBox(height: 16),
 
               // Action Buttons
-              Center(
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => BookingDetailPage(booking: data),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => BookingDetailPage(booking: data),
+                          ),
+                        );
+                      },
+                      icon: Icon(Icons.visibility, size: 18),
+                      label: Text("View Details"),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: kColorDark,
+                        side: BorderSide(color: kColorMid),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      );
-                    },
-                    icon: Icon(Icons.visibility, size: 18),
-                    label: Text("View Details"),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: kColorDark,
-                      side: BorderSide(color: kColorMid),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        padding: EdgeInsets.symmetric(vertical: 14),
                       ),
-                      padding: EdgeInsets.symmetric(vertical: 14),
                     ),
                   ),
-                ),
+
+                  // Track Driver button for trackable bookings
+                  if (isTrackable && scheduleId.isNotEmpty) ...[
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => LocationTrackingPage(
+                                scheduleId: scheduleId,
+                                bookingData: data,
+                              ),
+                            ),
+                          );
+                        },
+                        icon: Icon(Icons.location_on, size: 18),
+                        label: Text("Track Driver"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[600],
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
+
+              // Show tracking status for trackable bookings
+              if (isTrackable && scheduleId.isNotEmpty) ...[
+                SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.track_changes,
+                        size: 16,
+                        color: Colors.blue[700],
+                      ),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "Real-time tracking available for this trip",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue[700],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -357,8 +329,8 @@ class _BookingPageState extends State<BookingPage>
   }
 
   Widget buildBookingsList(bool upcoming) {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: getConsolidatedBookingsStream(upcoming),
+    return StreamBuilder<List<DocumentSnapshot>>(
+      stream: getBookingsStream(upcoming),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Center(
@@ -420,9 +392,33 @@ class _BookingPageState extends State<BookingPage>
           );
         }
 
+        // Sort bookings by date and time
+        final sortedBookings = snapshot.data!
+          ..sort((a, b) {
+            final aData = a.data() as Map<String, dynamic>;
+            final bData = b.data() as Map<String, dynamic>;
+
+            final aDateTime = _parseCustomDateTime(
+              aData['date'] ?? '',
+              aData['time'] ?? '',
+            );
+            final bDateTime = _parseCustomDateTime(
+              bData['date'] ?? '',
+              bData['time'] ?? '',
+            );
+
+            if (aDateTime == null && bDateTime == null) return 0;
+            if (aDateTime == null) return 1;
+            if (bDateTime == null) return -1;
+
+            return upcoming
+                ? aDateTime.compareTo(bDateTime) // Upcoming: earliest first
+                : bDateTime.compareTo(aDateTime); // Past: latest first
+          });
+
         return ListView(
           padding: const EdgeInsets.all(16),
-          children: snapshot.data!.map(buildBookingCard).toList(),
+          children: sortedBookings.map(buildBookingCard).toList(),
         );
       },
     );
@@ -434,10 +430,10 @@ class _BookingPageState extends State<BookingPage>
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(
-          "My Booking",
+          "My Bookings",
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 20),
         ),
-        backgroundColor: Colors.white10,
+        backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
         elevation: 0,
         centerTitle: true,
