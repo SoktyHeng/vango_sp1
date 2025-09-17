@@ -249,92 +249,143 @@ class ScheduleTimePage extends StatelessWidget {
                     childAspectRatio: 2.0,
                     mainAxisSpacing: 20,
                     crossAxisSpacing: 20,
-                    children: availableDocs.map((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      final time = data['time'];
-                      final seatsTotal = data['seatsTotal'];
-                      final seatsTaken = List<int>.from(data['seatsTaken']);
-                      final seatLeft = seatsTotal - seatsTaken.length;
-                      final timeAvailable = isTimeAvailable(time);
+                    children: (() {
+                      // Build a list of schedule items with all needed info
+                      final items = availableDocs.map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        final time = data['time'];
+                        final seatsTotal = data['seatsTotal'];
+                        final seatsTaken = List<int>.from(data['seatsTaken']);
+                        final seatLeft = seatsTotal - seatsTaken.length;
+                        final timeAvailable = isTimeAvailable(time);
 
-                      return ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                        return {
+                          'doc': doc,
+                          'data': data,
+                          'time': time,
+                          'seatsTotal': seatsTotal,
+                          'seatsTaken': seatsTaken,
+                          'seatLeft': seatLeft,
+                          'timeAvailable': timeAvailable,
+                        };
+                      }).toList();
+
+                      // Sort by time in chronological order
+                      items.sort((a, b) {
+                        try {
+                          final timeFormat =
+                              a['time'].contains('PM') ||
+                                  a['time'].contains('AM')
+                              ? DateFormat('h:mm a')
+                              : DateFormat('HH:mm');
+
+                          final timeA = timeFormat.parse(a['time']);
+                          final timeB = timeFormat.parse(b['time']);
+
+                          // Create DateTime objects for proper comparison
+                          final dateTimeA = DateTime(
+                            2000,
+                            1,
+                            1,
+                            timeA.hour,
+                            timeA.minute,
+                          );
+                          final dateTimeB = DateTime(
+                            2000,
+                            1,
+                            1,
+                            timeB.hour,
+                            timeB.minute,
+                          );
+
+                          return dateTimeA.compareTo(dateTimeB);
+                        } catch (e) {
+                          print("Error sorting times: $e");
+                          return 0;
+                        }
+                      });
+
+                      // Map to widgets
+                      return items.map((item) {
+                        return ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            backgroundColor: !item['timeAvailable']
+                                ? Colors.grey[300]
+                                : item['seatLeft'] > 0
+                                ? Color.fromRGBO(207, 207, 232, 1)
+                                : Colors.grey[200],
+                            foregroundColor: !item['timeAvailable']
+                                ? Colors.grey[600]
+                                : item['seatLeft'] > 0
+                                ? Colors.black
+                                : Colors.grey,
+                            side: BorderSide(
+                              color: !item['timeAvailable']
+                                  ? Colors.grey[400]!
+                                  : Color.fromRGBO(78, 78, 143, 1),
+                              width: 1.5,
+                            ),
                           ),
-                          backgroundColor: !timeAvailable
-                              ? Colors.grey[300]
-                              : seatLeft > 0
-                              ? Color.fromRGBO(207, 207, 232, 1)
-                              : Colors.grey[200],
-                          foregroundColor: !timeAvailable
-                              ? Colors.grey[600]
-                              : seatLeft > 0
-                              ? Colors.black
-                              : Colors.grey,
-                          side: BorderSide(
-                            color: !timeAvailable
-                                ? Colors.grey[400]!
-                                : Color.fromRGBO(78, 78, 143, 1),
-                            width: 1.5,
-                          ),
-                        ),
-                        onPressed: timeAvailable && seatLeft > 0
-                            ? () async {
-                                int price = await fetchPriceForRoute(routeId);
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => SeatSelectionPage(
-                                      occupiedSeats: seatsTaken,
-                                      from: from,
-                                      to: to,
-                                      date: date,
-                                      time: time,
-                                      pricePerSeat: price,
-                                      location: routeId,
+                          onPressed:
+                              item['timeAvailable'] && item['seatLeft'] > 0
+                              ? () async {
+                                  int price = await fetchPriceForRoute(routeId);
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => SeatSelectionPage(
+                                        occupiedSeats: item['seatsTaken'],
+                                        from: from,
+                                        to: to,
+                                        date: date,
+                                        time: item['time'],
+                                        pricePerSeat: price,
+                                        location: routeId,
+                                      ),
                                     ),
+                                  );
+                                }
+                              : null,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 14.0,
+                              horizontal: 10,
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  item['time'],
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
                                   ),
-                                );
-                              }
-                            : null,
-
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 14.0,
-                            horizontal: 10,
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                time,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
                                 ),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                !timeAvailable
-                                    ? "Time Passed"
-                                    : seatLeft > 0
-                                    ? "Seat: $seatLeft / $seatsTotal"
-                                    : "Full",
-                                style: TextStyle(
-                                  color: !timeAvailable
-                                      ? Colors.grey[600]
-                                      : seatLeft > 0
-                                      ? Colors.green
-                                      : Colors.red,
-                                  fontSize: 13,
+                                SizedBox(height: 4),
+                                Text(
+                                  !item['timeAvailable']
+                                      ? "Time Passed"
+                                      : item['seatLeft'] > 0
+                                      ? "Seat: ${item['seatLeft']} / ${item['seatsTotal']}"
+                                      : "Full",
+                                  style: TextStyle(
+                                    color: !item['timeAvailable']
+                                        ? Colors.grey[600]
+                                        : item['seatLeft'] > 0
+                                        ? Colors.green
+                                        : Colors.red,
+                                    fontSize: 13,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    }).toList(),
+                        );
+                      }).toList();
+                    })(),
                   );
                 },
               ),

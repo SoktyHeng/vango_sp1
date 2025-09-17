@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'qr_code_generator.dart'; // Import your QR generator widget
 
 class PaymentPage extends StatefulWidget {
   final String from;
@@ -93,6 +94,9 @@ class _PaymentPageState extends State<PaymentPage> {
       final userId = user?.uid;
       final now = Timestamp.now();
 
+      String bookingId = '';
+      String scheduleId = '';
+
       if (widget.isUpdatingExisting && widget.existingBookingId != null) {
         // Update existing booking with ALL seats (existing + new)
         await FirebaseFirestore.instance
@@ -108,6 +112,15 @@ class _PaymentPageState extends State<PaymentPage> {
               'paymentMethod': "credit_card",
               'paymentStatus': "paid",
             });
+
+        bookingId = widget.existingBookingId!;
+
+        // Get schedule ID from the existing booking
+        final bookingDoc = await FirebaseFirestore.instance
+            .collection('bookings')
+            .doc(bookingId)
+            .get();
+        scheduleId = bookingDoc.data()?['scheduleId'] ?? '';
 
         // Update schedule seatsTaken (only add the NEW seats)
         if (widget.newSeatsOnly != null && widget.newSeatsOnly!.isNotEmpty) {
@@ -126,6 +139,7 @@ class _PaymentPageState extends State<PaymentPage> {
 
           if (scheduleQuery.docs.isNotEmpty) {
             final scheduleDoc = scheduleQuery.docs.first;
+            scheduleId = scheduleDoc.id;
             final currentTaken = List<int>.from(
               scheduleDoc['seatsTaken'] ?? [],
             );
@@ -156,7 +170,7 @@ class _PaymentPageState extends State<PaymentPage> {
         }
 
         final scheduleDoc = scheduleQuery.docs.first;
-        final scheduleId = scheduleDoc.id;
+        scheduleId = scheduleDoc.id;
 
         // Create booking data with scheduleId
         final bookingData = {
@@ -177,10 +191,12 @@ class _PaymentPageState extends State<PaymentPage> {
           "paymentStatus": "paid",
         };
 
-        // Save booking
-        await FirebaseFirestore.instance
+        // Save booking and get the document reference
+        final bookingRef = await FirebaseFirestore.instance
             .collection('bookings')
             .add(bookingData);
+
+        bookingId = bookingRef.id; // Get the generated booking ID
 
         // Update schedule seatsTaken
         final docRef = scheduleDoc.reference;
@@ -197,42 +213,60 @@ class _PaymentPageState extends State<PaymentPage> {
       // Show success dialog
       showDialog(
         context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.green, size: 28),
-              SizedBox(width: 12),
-              Text(
-                widget.isUpdatingExisting
-                    ? 'Seats Added'
-                    : 'Payment Successful',
-              ),
-            ],
-          ),
-          content: Text(
-            widget.isUpdatingExisting
-                ? 'Additional seats have been added to your booking and payment processed successfully.'
-                : 'Your booking has been confirmed and payment processed successfully.',
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () =>
-                  Navigator.popUntil(context, (route) => route.isFirst),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color.fromRGBO(78, 78, 148, 1),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+        barrierDismissible: false, // Prevent dismissing by tapping outside
+        builder: (BuildContext context) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green, size: 28),
+                SizedBox(width: 8),
+                Text(
+                  'Payment Successful',
+                  style: GoogleFonts.roboto(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              widget.isUpdatingExisting
+                  ? 'Your seats have been added successfully!'
+                  : 'Your booking has been confirmed successfully!',
+              style: GoogleFonts.roboto(fontSize: 16, color: Colors.grey[600]),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Close dialog
+                  Navigator.popUntil(
+                    context,
+                    (route) => route.isFirst,
+                  ); // Navigate to home page
+                },
+                style: TextButton.styleFrom(
+                  backgroundColor: Color.fromRGBO(78, 78, 148, 1),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                child: Text(
+                  'OK',
+                  style: GoogleFonts.roboto(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-              child: Text('OK'),
-            ),
-          ],
-        ),
+            ],
+          );
+        },
       );
     } catch (e) {
       setState(() {
@@ -241,7 +275,10 @@ class _PaymentPageState extends State<PaymentPage> {
 
       print("Payment error: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to process payment. Please try again.")),
+        SnackBar(
+          content: Text("Failed to process payment. Please try again."),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -441,7 +478,7 @@ class _PaymentPageState extends State<PaymentPage> {
                       SizedBox(height: 20),
                       Text(
                         'Processing Payment...',
-                        style: TextStyle(
+                        style: GoogleFonts.roboto(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
                           color: Colors.grey.shade700,
@@ -450,7 +487,7 @@ class _PaymentPageState extends State<PaymentPage> {
                       SizedBox(height: 8),
                       Text(
                         'Please wait while we process your payment',
-                        style: TextStyle(
+                        style: GoogleFonts.roboto(
                           fontSize: 14,
                           color: Colors.grey.shade500,
                         ),
@@ -476,7 +513,7 @@ class _PaymentPageState extends State<PaymentPage> {
           ),
           label: Text(
             'Pay Now',
-            style: TextStyle(
+            style: GoogleFonts.roboto(
               fontSize: 18,
               fontWeight: FontWeight.w600,
               color: Colors.white,

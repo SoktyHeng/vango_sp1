@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'booking_details_page.dart';
 import 'location_tracking_page.dart';
+import 'qr_code_generator.dart'; // Add this import
 
 class BookingPage extends StatefulWidget {
   const BookingPage({super.key});
@@ -84,6 +85,72 @@ class _BookingPageState extends State<BookingPage>
     }
   }
 
+  // Check if QR code is available for this booking
+  bool _isQRCodeAvailable(Map<String, dynamic> bookingData) {
+    final scheduleId = bookingData['scheduleId'];
+    final status = bookingData['status'];
+
+    // QR code is available if booking has scheduleId and is confirmed
+    return scheduleId != null &&
+        scheduleId.toString().isNotEmpty &&
+        (status == 'confirmed' ||
+            status == null); // null for backward compatibility
+  }
+
+  // Show QR code for the booking
+  Future<void> _showQRCode(
+    Map<String, dynamic> bookingData,
+    String bookingId,
+  ) async {
+    try {
+      // Get current user name
+      final user = FirebaseAuth.instance.currentUser;
+      String passengerName = 'Passenger';
+
+      if (user != null) {
+        try {
+          final userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
+
+          if (userDoc.exists) {
+            passengerName = userDoc.data()?['name'] ?? 'Passenger';
+          }
+        } catch (e) {
+          print('Error getting user name: $e');
+        }
+      }
+
+      // Navigate to QR code generator
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => QRCodeGenerator(
+            bookingId: bookingId,
+            scheduleId: bookingData['scheduleId'] ?? '',
+            passengerName: passengerName,
+            from: bookingData['from'] ?? '',
+            to: bookingData['to'] ?? '',
+            date: bookingData['date'] ?? '',
+            time: bookingData['time'] ?? '',
+            selectedSeats: List<dynamic>.from(
+              bookingData['selectedSeats'] ?? [],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      print('Error showing QR code: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading QR code. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   // TEMPORARY TEST VERSION - Shows button for all bookings with scheduleId
   bool _isBookingTrackable(Map<String, dynamic> bookingData) {
     final scheduleId = bookingData['scheduleId'];
@@ -95,6 +162,7 @@ class _BookingPageState extends State<BookingPage>
 
   Widget buildBookingCard(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+    final bookingId = doc.id; // Get the document ID
     final date = data['date'] ?? '';
     final time = data['time'] ?? '';
     final from = data['from'] ?? '';
@@ -104,8 +172,9 @@ class _BookingPageState extends State<BookingPage>
     final scheduleId = data['scheduleId'] ?? '';
     final totalPrice = data['totalPrice'] ?? 0;
 
-    // Check if this booking is trackable
+    // Check if this booking is trackable and has QR code
     final isTrackable = _isBookingTrackable(data);
+    final hasQRCode = _isQRCodeAvailable(data);
 
     return Container(
       margin: EdgeInsets.only(bottom: 16),
@@ -184,9 +253,10 @@ class _BookingPageState extends State<BookingPage>
 
               SizedBox(height: 16),
 
-              // Action Buttons
+              // Main Action Buttons - Single Row
               Row(
                 children: [
+                  // View Details Button
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () {
@@ -197,22 +267,43 @@ class _BookingPageState extends State<BookingPage>
                           ),
                         );
                       },
-                      icon: Icon(Icons.visibility, size: 18),
-                      label: Text("View Details"),
+                      icon: Icon(Icons.visibility_outlined, size: 16),
+                      label: Text("Details"),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: kColorDark,
-                        side: BorderSide(color: kColorMid),
+                        foregroundColor: Colors.grey[700],
+                        side: BorderSide(color: Colors.grey[300]!, width: 1),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        padding: EdgeInsets.symmetric(vertical: 14),
+                        padding: EdgeInsets.symmetric(vertical: 12),
                       ),
                     ),
                   ),
 
-                  // Track Driver button for trackable bookings
+                  SizedBox(width: 8),
+
+                  // QR Code Button (if available)
+                  if (hasQRCode)
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showQRCode(data, bookingId),
+                        icon: Icon(Icons.qr_code_2, size: 16),
+                        label: Text("Ticket"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kColorDark,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+
+                  // Track Button (if trackable)
                   if (isTrackable && scheduleId.isNotEmpty) ...[
-                    SizedBox(width: 12),
+                    SizedBox(width: 8),
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () {
@@ -226,15 +317,16 @@ class _BookingPageState extends State<BookingPage>
                             ),
                           );
                         },
-                        icon: Icon(Icons.location_on, size: 18),
-                        label: Text("Track Driver"),
+                        icon: Icon(Icons.location_on_outlined, size: 16),
+                        label: Text("Track"),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.blue[600],
                           foregroundColor: Colors.white,
+                          elevation: 0,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          padding: EdgeInsets.symmetric(vertical: 14),
+                          padding: EdgeInsets.symmetric(vertical: 12),
                         ),
                       ),
                     ),
@@ -242,39 +334,63 @@ class _BookingPageState extends State<BookingPage>
                 ],
               ),
 
-              // Show tracking status for trackable bookings
-              if (isTrackable && scheduleId.isNotEmpty) ...[
-                SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue[200]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.track_changes,
-                        size: 16,
-                        color: Colors.blue[700],
-                      ),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          "Real-time tracking available for this trip",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.blue[700],
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+              // Remove the status indicators section completely or simplify to just one small indicator
+              // if (hasQRCode || (isTrackable && scheduleId.isNotEmpty)) ...[
+              //   SizedBox(height: 8),
+              //   Row(
+              //     mainAxisAlignment: MainAxisAlignment.center,
+              //     children: [
+              //       if (hasQRCode)
+              //         Container(
+              //           padding: EdgeInsets.symmetric(
+              //             horizontal: 6,
+              //             vertical: 2,
+              //           ),
+              //           decoration: BoxDecoration(
+              //             color: kColorDark.withOpacity(0.1),
+              //             borderRadius: BorderRadius.circular(4),
+              //           ),
+              //           child: Text(
+              //             "Digital",
+              //             style: TextStyle(
+              //               fontSize: 10,
+              //               color: kColorDark,
+              //               fontWeight: FontWeight.w500,
+              //             ),
+              //           ),
+              //         ),
+              //       if (hasQRCode && (isTrackable && scheduleId.isNotEmpty))
+              //         Container(
+              //           margin: EdgeInsets.symmetric(horizontal: 4),
+              //           width: 2,
+              //           height: 2,
+              //           decoration: BoxDecoration(
+              //             color: Colors.grey[400],
+              //             shape: BoxShape.circle,
+              //           ),
+              //         ),
+              //       if (isTrackable && scheduleId.isNotEmpty)
+              //         Container(
+              //           padding: EdgeInsets.symmetric(
+              //             horizontal: 6,
+              //             vertical: 2,
+              //           ),
+              //           decoration: BoxDecoration(
+              //             color: Colors.blue[50],
+              //             borderRadius: BorderRadius.circular(4),
+              //           ),
+              //           child: Text(
+              //             "Live",
+              //             style: TextStyle(
+              //               fontSize: 10,
+              //               color: Colors.blue[700],
+              //               fontWeight: FontWeight.w500,
+              //             ),
+              //           ),
+              //         ),
+              //     ],
+              //   ),
+              // ],
             ],
           ),
         ),
