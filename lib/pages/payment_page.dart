@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'qr_code_generator.dart'; // Import your QR generator widget
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import '../config/stripe_config.dart';
 
 class PaymentPage extends StatefulWidget {
   final String from;
@@ -15,8 +17,8 @@ class PaymentPage extends StatefulWidget {
   final String location;
   final String? existingBookingId;
   final bool isUpdatingExisting;
-  final List<int>? newSeatsOnly; // Add this to track only new seats
-  final int? newSeatsPrice; // Add this to track price for new seats only
+  final List<int>? newSeatsOnly;
+  final int? newSeatsPrice;
 
   const PaymentPage({
     super.key,
@@ -30,8 +32,8 @@ class PaymentPage extends StatefulWidget {
     required this.location,
     this.existingBookingId,
     this.isUpdatingExisting = false,
-    this.newSeatsOnly, // Add this
-    this.newSeatsPrice, // Add this
+    this.newSeatsOnly,
+    this.newSeatsPrice,
   });
 
   @override
@@ -59,18 +61,144 @@ class _PaymentPageState extends State<PaymentPage> {
   String get formattedDate =>
       "${widget.date.day}/${widget.date.month}/${widget.date.year}";
 
-  // Get the seats to display (new seats only if updating, all seats if new booking)
   List<int> get seatsToDisplay {
     return widget.isUpdatingExisting && widget.newSeatsOnly != null
         ? widget.newSeatsOnly!
         : widget.selectedSeats;
   }
 
-  // Get the price to display (new seats price only if updating, total price if new booking)
   int get priceToDisplay {
     return widget.isUpdatingExisting && widget.newSeatsPrice != null
         ? widget.newSeatsPrice!
         : widget.totalPrice;
+  }
+
+  // Format card number with spaces
+  String _formatCardNumber(String value) {
+    value = value.replaceAll(' ', '');
+    String formatted = '';
+    for (int i = 0; i < value.length && i < 16; i++) {
+      if (i > 0 && i % 4 == 0) {
+        formatted += ' ';
+      }
+      formatted += value[i];
+    }
+    return formatted;
+  }
+
+  // Format expiry date
+  String _formatExpiryDate(String value) {
+    value = value.replaceAll('/', '');
+    if (value.length >= 2) {
+      return value.substring(0, 2) + '/' + value.substring(2, value.length > 4 ? 4 : value.length);
+    }
+    return value;
+  }
+
+  // Validate card with Stripe API using config file
+  Future<Map<String, dynamic>> _validateCardWithStripe() async {
+    try {
+      // Parse expiry date
+      List<String> expiryParts = _expiryController.text.split('/');
+      if (expiryParts.length != 2) {
+        return {'success': false, 'error': 'Invalid expiry date format'};
+      }
+
+      String expMonth = expiryParts[0].trim().padLeft(2, '0');
+      String expYear = expiryParts[1].trim();
+      if (expYear.length == 2) {
+        expYear = '20$expYear';
+      }
+
+      print('Using Stripe key: ${StripeConfig.publishableKey}');
+
+      // Create a payment method to validate the card
+      final response = await http.post(
+        Uri.parse(StripeConfig.paymentMethodsEndpoint),
+        headers: {
+          'Authorization': 'Bearer ${StripeConfig.publishableKey}',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: {
+          'type': 'card',
+          'card[number]': _cardNumberController.text.replaceAll(' ', ''),
+          'card[exp_month]': expMonth,
+          'card[exp_year]': expYear,
+          'card[cvc]': _cvvController.text,
+          'billing_details[name]': _cardHolderController.text,
+        },
+      );
+
+      print('Response status: ${response.statusCode}');
+      print('Response body: ${response.body}');
+
+      final data = json.decode(response.body);
+
+      if (response.statusCode == 200) {
+        // Card is valid
+        return {
+          'success': true,
+          'payment_method_id': data['id'],
+          'card_brand': _formatCardBrand(data['card']['brand']),
+          'last4': data['card']['last4'],
+        };
+      } else {
+        // Card validation failed
+        String errorMessage = 'Card validation failed';
+        if (data['error'] != null) {
+          switch (data['error']['code']) {
+            case 'incorrect_number':
+              errorMessage = 'Your card number is incorrect';
+              break;
+            case 'invalid_number':
+              errorMessage = 'Your card number is not valid';
+              break;
+            case 'invalid_expiry_month':
+              errorMessage = 'Invalid expiration month';
+              break;
+            case 'invalid_expiry_year':
+              errorMessage = 'Invalid expiration year';
+              break;
+            case 'invalid_cvc':
+              errorMessage = 'Invalid CVV/CVC code';
+              break;
+            case 'expired_card':
+              errorMessage = 'Your card has expired';
+              break;
+            case 'card_declined':
+              errorMessage = 'Your card was declined';
+              break;
+            default:
+              errorMessage = data['error']['message'] ?? 'Card validation failed';
+          }
+        }
+        return {'success': false, 'error': errorMessage};
+      }
+    } catch (e) {
+      print('Network error: $e');
+      return {'success': false, 'error': 'Network error: Please check your connection'};
+    }
+  }
+
+  String _formatCardBrand(String brand) {
+    switch (brand.toLowerCase()) {
+      case 'visa':
+        return 'Visa';
+      case 'mastercard':
+        return 'Mastercard';
+      case 'amex':
+        return 'American Express';
+      case 'discover':
+        return 'Discover';
+      case 'diners':
+        return 'Diners Club';
+      case 'jcb':
+        return 'JCB';
+      case 'unionpay':
+        return 'UnionPay';
+      default:
+        return brand.toUpperCase();
+    }
   }
 
   Future<void> _processPayment() async {
@@ -80,7 +208,10 @@ class _PaymentPageState extends State<PaymentPage> {
         _expiryController.text.trim().isEmpty ||
         _cvvController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please fill in all card details')),
+        SnackBar(
+          content: Text('Please fill in all card details'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -90,197 +221,247 @@ class _PaymentPageState extends State<PaymentPage> {
     });
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      final userId = user?.uid;
-      final now = Timestamp.now();
+      // Validate card information with Stripe
+      Map<String, dynamic> validationResult = await _validateCardWithStripe();
 
-      String bookingId = '';
-      String scheduleId = '';
-
-      if (widget.isUpdatingExisting && widget.existingBookingId != null) {
-        // Update existing booking with ALL seats (existing + new)
-        await FirebaseFirestore.instance
-            .collection('bookings')
-            .doc(widget.existingBookingId!)
-            .update({
-              'selectedSeats':
-                  widget.selectedSeats, // All seats (existing + new)
-              'passengerCount': widget.selectedSeats.length,
-              'totalPrice': widget.totalPrice, // Total price for all seats
-              'location': widget.location,
-              'timestamp': now,
-              'paymentMethod': "credit_card",
-              'paymentStatus': "paid",
-            });
-
-        bookingId = widget.existingBookingId!;
-
-        // Get schedule ID from the existing booking
-        final bookingDoc = await FirebaseFirestore.instance
-            .collection('bookings')
-            .doc(bookingId)
-            .get();
-        scheduleId = bookingDoc.data()?['scheduleId'] ?? '';
-
-        // Update schedule seatsTaken (only add the NEW seats)
-        if (widget.newSeatsOnly != null && widget.newSeatsOnly!.isNotEmpty) {
-          final routeId =
-              "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
-          final formattedBookingDate =
-              "${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}";
-
-          final scheduleQuery = await FirebaseFirestore.instance
-              .collection('schedules')
-              .where('routeId', isEqualTo: routeId)
-              .where('date', isEqualTo: formattedBookingDate)
-              .where('time', isEqualTo: widget.time)
-              .limit(1)
-              .get();
-
-          if (scheduleQuery.docs.isNotEmpty) {
-            final scheduleDoc = scheduleQuery.docs.first;
-            scheduleId = scheduleDoc.id;
-            final currentTaken = List<int>.from(
-              scheduleDoc['seatsTaken'] ?? [],
-            );
-            final updatedTaken = [...currentTaken, ...widget.newSeatsOnly!];
-
-            await scheduleDoc.reference.update({
-              "seatsTaken": updatedTaken.toSet().toList(),
-            });
-          }
-        }
-      } else {
-        // Create new booking (existing logic)
-        final routeId =
-            "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
-        final formattedBookingDate =
-            "${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}";
-
-        final scheduleQuery = await FirebaseFirestore.instance
-            .collection('schedules')
-            .where('routeId', isEqualTo: routeId)
-            .where('date', isEqualTo: formattedBookingDate)
-            .where('time', isEqualTo: widget.time)
-            .limit(1)
-            .get();
-
-        if (scheduleQuery.docs.isEmpty) {
-          throw Exception('Schedule not found');
-        }
-
-        final scheduleDoc = scheduleQuery.docs.first;
-        scheduleId = scheduleDoc.id;
-
-        // Create booking data with scheduleId
-        final bookingData = {
-          "from": widget.from,
-          "to": widget.to,
-          "date": formattedBookingDate,
-          "time": widget.time,
-          "selectedSeats": widget.selectedSeats,
-          "pricePerSeat": widget.pricePerSeat,
-          "totalPrice": widget.totalPrice,
-          "passengerCount": widget.selectedSeats.length,
-          "userId": userId,
-          "timestamp": now,
-          "location": widget.location,
-          "scheduleId": scheduleId,
-          "status": "confirmed",
-          "paymentMethod": "credit_card",
-          "paymentStatus": "paid",
-        };
-
-        // Save booking and get the document reference
-        final bookingRef = await FirebaseFirestore.instance
-            .collection('bookings')
-            .add(bookingData);
-
-        bookingId = bookingRef.id; // Get the generated booking ID
-
-        // Update schedule seatsTaken
-        final docRef = scheduleDoc.reference;
-        final currentTaken = List<int>.from(scheduleDoc['seatsTaken'] ?? []);
-        final updatedTaken = [...currentTaken, ...widget.selectedSeats];
-
-        await docRef.update({"seatsTaken": updatedTaken.toSet().toList()});
+      if (!validationResult['success']) {
+        setState(() {
+          _isProcessing = false;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(validationResult['error']),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
       }
+
+      // If card is valid, proceed with booking
+      await _saveBooking(validationResult);
 
       setState(() {
         _isProcessing = false;
       });
 
       // Show success dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false, // Prevent dismissing by tapping outside
-        builder: (BuildContext context) {
-          return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.green, size: 28),
-                SizedBox(width: 8),
-                Text(
-                  'Payment Successful',
-                  style: GoogleFonts.roboto(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-              ],
-            ),
-            content: Text(
-              widget.isUpdatingExisting
-                  ? 'Your seats have been added successfully!'
-                  : 'Your booking has been confirmed successfully!',
-              style: GoogleFonts.roboto(fontSize: 16, color: Colors.grey[600]),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Close dialog
-                  Navigator.popUntil(
-                    context,
-                    (route) => route.isFirst,
-                  ); // Navigate to home page
-                },
-                style: TextButton.styleFrom(
-                  backgroundColor: Color.fromRGBO(78, 78, 148, 1),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                ),
-                child: Text(
-                  'OK',
-                  style: GoogleFonts.roboto(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      );
+      _showSuccessDialog(validationResult);
+
     } catch (e) {
       setState(() {
         _isProcessing = false;
       });
 
-      print("Payment error: $e");
+      print("Payment validation error: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Failed to process payment. Please try again."),
+          content: Text("Failed to validate payment. Please try again."),
           backgroundColor: Colors.red,
         ),
       );
     }
+  }
+
+  Future<void> _saveBooking(Map<String, dynamic> validationResult) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final userId = user?.uid;
+    final now = Timestamp.now();
+
+    if (widget.isUpdatingExisting && widget.existingBookingId != null) {
+      // Update existing booking
+      await FirebaseFirestore.instance
+          .collection('bookings')
+          .doc(widget.existingBookingId!)
+          .update({
+            'selectedSeats': widget.selectedSeats,
+            'passengerCount': widget.selectedSeats.length,
+            'totalPrice': widget.totalPrice,
+            'location': widget.location,
+            'timestamp': now,
+            'paymentMethod': "stripe",
+            'paymentStatus': "validated",
+            'cardBrand': validationResult['card_brand'],
+            'cardLast4': validationResult['last4'],
+            'stripePaymentMethodId': validationResult['payment_method_id'],
+          });
+
+      // Update schedule seatsTaken (only add the NEW seats)
+      if (widget.newSeatsOnly != null && widget.newSeatsOnly!.isNotEmpty) {
+        await _updateScheduleSeats();
+      }
+    } else {
+      // Create new booking
+      final routeId =
+          "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
+      final formattedBookingDate =
+          "${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}";
+
+      final scheduleQuery = await FirebaseFirestore.instance
+          .collection('schedules')
+          .where('routeId', isEqualTo: routeId)
+          .where('date', isEqualTo: formattedBookingDate)
+          .where('time', isEqualTo: widget.time)
+          .limit(1)
+          .get();
+
+      if (scheduleQuery.docs.isEmpty) {
+        throw Exception('Schedule not found');
+      }
+
+      final scheduleDoc = scheduleQuery.docs.first;
+      final scheduleId = scheduleDoc.id;
+
+      // Create booking data
+      final bookingData = {
+        "from": widget.from,
+        "to": widget.to,
+        "date": formattedBookingDate,
+        "time": widget.time,
+        "selectedSeats": widget.selectedSeats,
+        "pricePerSeat": widget.pricePerSeat,
+        "totalPrice": widget.totalPrice,
+        "passengerCount": widget.selectedSeats.length,
+        "userId": userId,
+        "timestamp": now,
+        "location": widget.location,
+        "scheduleId": scheduleId,
+        "status": "confirmed",
+        "paymentMethod": "stripe",
+        "paymentStatus": "validated",
+        "cardBrand": validationResult['card_brand'],
+        "cardLast4": validationResult['last4'],
+        "stripePaymentMethodId": validationResult['payment_method_id'],
+      };
+
+      await FirebaseFirestore.instance.collection('bookings').add(bookingData);
+
+      // Update schedule seatsTaken
+      final docRef = scheduleDoc.reference;
+      final currentTaken = List<int>.from(scheduleDoc['seatsTaken'] ?? []);
+      final updatedTaken = [...currentTaken, ...widget.selectedSeats];
+
+      await docRef.update({"seatsTaken": updatedTaken.toSet().toList()});
+    }
+  }
+
+  Future<void> _updateScheduleSeats() async {
+    final routeId = "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
+    final formattedBookingDate =
+        "${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}";
+
+    final scheduleQuery = await FirebaseFirestore.instance
+        .collection('schedules')
+        .where('routeId', isEqualTo: routeId)
+        .where('date', isEqualTo: formattedBookingDate)
+        .where('time', isEqualTo: widget.time)
+        .limit(1)
+        .get();
+
+    if (scheduleQuery.docs.isNotEmpty) {
+      final scheduleDoc = scheduleQuery.docs.first;
+      final currentTaken = List<int>.from(scheduleDoc['seatsTaken'] ?? []);
+      final updatedTaken = [...currentTaken, ...widget.newSeatsOnly!];
+
+      await scheduleDoc.reference.update({
+        "seatsTaken": updatedTaken.toSet().toList(),
+      });
+    }
+  }
+
+  void _showSuccessDialog(Map<String, dynamic> validationResult) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green, size: 28),
+              SizedBox(width: 8),
+              Text(
+                'Card Validated Successfully',
+                style: GoogleFonts.roboto(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[800],
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.isUpdatingExisting
+                    ? 'Your seats have been added successfully!'
+                    : 'Your booking has been confirmed successfully!',
+                style: GoogleFonts.roboto(fontSize: 16, color: Colors.grey[600]),
+              ),
+              SizedBox(height: 12),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.security, color: Colors.blue.shade600, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Card validated via Stripe. No amount was charged.',
+                        style: GoogleFonts.roboto(
+                          fontSize: 14,
+                          color: Colors.blue.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Card: **** **** **** ${validationResult['last4']} (${validationResult['card_brand']})',
+                style: GoogleFonts.roboto(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.popUntil(context, (route) => route.isFirst);
+              },
+              style: TextButton.styleFrom(
+                backgroundColor: Color.fromRGBO(78, 78, 148, 1),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+              child: Text(
+                'OK',
+                style: GoogleFonts.roboto(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -291,7 +472,6 @@ class _PaymentPageState extends State<PaymentPage> {
         title: Text(
           'Payment',
           style: GoogleFonts.roboto(
-            // fontWeight: FontWeight.w600,
             color: Colors.black87,
             fontSize: 20,
           ),
@@ -308,6 +488,8 @@ class _PaymentPageState extends State<PaymentPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                SizedBox(height: 15),
+
                 // Booking Summary Card
                 Card(
                   color: Colors.white,
@@ -339,10 +521,7 @@ class _PaymentPageState extends State<PaymentPage> {
                           ],
                         ),
                         SizedBox(height: 16),
-                        _buildSummaryRow(
-                          'Route',
-                          '${widget.from} → ${widget.to}',
-                        ),
+                        _buildSummaryRow('Route', '${widget.from} → ${widget.to}'),
                         _buildSummaryRow('Date', formattedDate),
                         _buildSummaryRow('Time', widget.time),
                         _buildSummaryRow(
@@ -414,14 +593,14 @@ class _PaymentPageState extends State<PaymentPage> {
                         _buildTextField(
                           controller: _cardNumberController,
                           label: 'Card Number',
-                          hintText: '1234 5678 9012 3456',
                           keyboardType: TextInputType.number,
+                          formatter: _formatCardNumber,
+                          maxLength: 23,
                         ),
                         SizedBox(height: 16),
                         _buildTextField(
                           controller: _cardHolderController,
                           label: 'Card Holder Name',
-                          hintText: 'John Doe',
                         ),
                         SizedBox(height: 16),
                         Row(
@@ -432,6 +611,8 @@ class _PaymentPageState extends State<PaymentPage> {
                                 label: 'Expiry Date',
                                 hintText: 'MM/YY',
                                 keyboardType: TextInputType.datetime,
+                                formatter: _formatExpiryDate,
+                                maxLength: 5,
                               ),
                             ),
                             SizedBox(width: 16),
@@ -439,9 +620,9 @@ class _PaymentPageState extends State<PaymentPage> {
                               child: _buildTextField(
                                 controller: _cvvController,
                                 label: 'CVV',
-                                hintText: '123',
                                 keyboardType: TextInputType.number,
                                 obscureText: true,
+                                maxLength: 4,
                               ),
                             ),
                           ],
@@ -450,7 +631,7 @@ class _PaymentPageState extends State<PaymentPage> {
                     ),
                   ),
                 ),
-                SizedBox(height: 80), // Space for floating button
+                SizedBox(height: 80),
               ],
             ),
           ),
@@ -477,7 +658,7 @@ class _PaymentPageState extends State<PaymentPage> {
                       ),
                       SizedBox(height: 20),
                       Text(
-                        'Processing Payment...',
+                        'Validating Card...',
                         style: GoogleFonts.roboto(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
@@ -486,7 +667,7 @@ class _PaymentPageState extends State<PaymentPage> {
                       ),
                       SizedBox(height: 8),
                       Text(
-                        'Please wait while we process your payment',
+                        'Please wait while we validate your card with Stripe',
                         style: GoogleFonts.roboto(
                           fontSize: 14,
                           color: Colors.grey.shade500,
@@ -501,7 +682,7 @@ class _PaymentPageState extends State<PaymentPage> {
         ],
       ),
 
-      // Floating Pay Now Button
+      // Floating Validate Card Button
       floatingActionButton: Container(
         width: double.infinity,
         margin: EdgeInsets.symmetric(horizontal: 20),
@@ -512,7 +693,7 @@ class _PaymentPageState extends State<PaymentPage> {
             borderRadius: BorderRadius.circular(16),
           ),
           label: Text(
-            'Pay Now',
+            'Check Out',
             style: GoogleFonts.roboto(
               fontSize: 18,
               fontWeight: FontWeight.w600,
@@ -558,12 +739,22 @@ class _PaymentPageState extends State<PaymentPage> {
     String? hintText,
     TextInputType? keyboardType,
     bool obscureText = false,
+    String Function(String)? formatter,
+    int? maxLength,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       obscureText: obscureText,
+      maxLength: maxLength,
       style: TextStyle(fontSize: 16, color: Colors.black87),
+      onChanged: formatter != null ? (value) {
+        String formatted = formatter!(value);
+        controller.value = TextEditingValue(
+          text: formatted,
+          selection: TextSelection.collapsed(offset: formatted.length),
+        );
+      } : null,
       decoration: InputDecoration(
         labelText: label,
         hintText: hintText,
@@ -590,6 +781,7 @@ class _PaymentPageState extends State<PaymentPage> {
         suffixIcon: label == 'Card Number'
             ? Icon(Icons.credit_card, color: Colors.grey[400])
             : null,
+        counterText: '',
       ),
     );
   }
