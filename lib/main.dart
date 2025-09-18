@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'auth/main_page.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -6,6 +7,9 @@ import 'config/stripe_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Load environment variables from .env file
+  await dotenv.load(fileName: ".env"); 
 
   // Initialize Firebase
   await Firebase.initializeApp();
