@@ -26,6 +26,13 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Add these keys before the closing </dict> tag -->
+	<key>NSBonjourServices</key>
+	<array>
+    <string>_dartobservatory._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>This app uses local network to communicate with Firebase and other services.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>This app needs location access to track your ride</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
