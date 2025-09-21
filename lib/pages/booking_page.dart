@@ -333,64 +333,6 @@ class _BookingPageState extends State<BookingPage>
                   ],
                 ],
               ),
-
-              // Remove the status indicators section completely or simplify to just one small indicator
-              // if (hasQRCode || (isTrackable && scheduleId.isNotEmpty)) ...[
-              //   SizedBox(height: 8),
-              //   Row(
-              //     mainAxisAlignment: MainAxisAlignment.center,
-              //     children: [
-              //       if (hasQRCode)
-              //         Container(
-              //           padding: EdgeInsets.symmetric(
-              //             horizontal: 6,
-              //             vertical: 2,
-              //           ),
-              //           decoration: BoxDecoration(
-              //             color: kColorDark.withOpacity(0.1),
-              //             borderRadius: BorderRadius.circular(4),
-              //           ),
-              //           child: Text(
-              //             "Digital",
-              //             style: TextStyle(
-              //               fontSize: 10,
-              //               color: kColorDark,
-              //               fontWeight: FontWeight.w500,
-              //             ),
-              //           ),
-              //         ),
-              //       if (hasQRCode && (isTrackable && scheduleId.isNotEmpty))
-              //         Container(
-              //           margin: EdgeInsets.symmetric(horizontal: 4),
-              //           width: 2,
-              //           height: 2,
-              //           decoration: BoxDecoration(
-              //             color: Colors.grey[400],
-              //             shape: BoxShape.circle,
-              //           ),
-              //         ),
-              //       if (isTrackable && scheduleId.isNotEmpty)
-              //         Container(
-              //           padding: EdgeInsets.symmetric(
-              //             horizontal: 6,
-              //             vertical: 2,
-              //           ),
-              //           decoration: BoxDecoration(
-              //             color: Colors.blue[50],
-              //             borderRadius: BorderRadius.circular(4),
-              //           ),
-              //           child: Text(
-              //             "Live",
-              //             style: TextStyle(
-              //               fontSize: 10,
-              //               color: Colors.blue[700],
-              //               fontWeight: FontWeight.w500,
-              //             ),
-              //           ),
-              //         ),
-              //     ],
-              //   ),
-              // ],
             ],
           ),
         ),

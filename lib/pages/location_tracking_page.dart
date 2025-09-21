@@ -528,12 +528,6 @@ class _LocationTrackingPageState extends State<LocationTrackingPage>
     });
 
     _initializeTracking().then((_) {
-      // ScaffoldMessenger.of(context).showSnackBar(
-      //   const SnackBar(
-      //     content: Text('Location refreshed'),
-      //     duration: Duration(seconds: 2),
-      //   ),
-      // );
     });
   }
 }

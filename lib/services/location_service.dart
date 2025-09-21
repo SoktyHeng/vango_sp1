@@ -1,5 +1,4 @@
 import 'package:geolocator/geolocator.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 
@@ -35,7 +34,7 @@ class LocationService {
       }
       return false;
     } catch (e) {
-      print('❌ Error checking driver location sharing status: $e');
+      print('Error checking driver location sharing status: $e');
       return false;
     }
   }
@@ -53,7 +52,7 @@ class LocationService {
       }
       return null;
     } catch (e) {
-      print('❌ Error getting driver last location: $e');
+      print('Error getting driver last location: $e');
       return null;
     }
   }
@@ -81,20 +80,20 @@ class LocationService {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          print('❌ Location permissions are denied');
+          print('Location permissions are denied');
           return false;
         }
       }
       
       if (permission == LocationPermission.deniedForever) {
-        print('❌ Location permissions are permanently denied');
+        print('Location permissions are permanently denied');
         return false;
       }
 
-      print('✅ Location permissions granted');
+      print('Location permissions granted');
       return true;
     } catch (e) {
-      print('❌ Error requesting location permission: $e');
+      print('Error requesting location permission: $e');
       return false;
     }
   }
@@ -118,7 +117,7 @@ class LocationService {
         timeLimit: const Duration(seconds: 10),
       );
     } catch (e) {
-      print('❌ Error getting current position: $e');
+      print('Error getting current position: $e');
       return null;
     }
   }
