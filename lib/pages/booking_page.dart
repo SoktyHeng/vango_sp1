@@ -151,12 +151,9 @@ class _BookingPageState extends State<BookingPage>
     }
   }
 
-  // TEMPORARY TEST VERSION - Shows button for all bookings with scheduleId
+  // Check if booking is trackable (has scheduleId)
   bool _isBookingTrackable(Map<String, dynamic> bookingData) {
     final scheduleId = bookingData['scheduleId'];
-    print('Testing: Schedule ID = $scheduleId');
-
-    // For testing - show button for any booking that has a scheduleId
     return scheduleId != null && scheduleId.toString().isNotEmpty;
   }
 
@@ -171,6 +168,9 @@ class _BookingPageState extends State<BookingPage>
     final seats = seatsList is List ? seatsList.join(', ') : 'N/A';
     final scheduleId = data['scheduleId'] ?? '';
     final totalPrice = data['totalPrice'] ?? 0;
+    
+    // Get van license directly from booking data (no more async fetching!)
+    final vanLicense = data['vanLicense'] ?? 'N/A';
 
     // Check if this booking is trackable and has QR code
     final isTrackable = _isBookingTrackable(data);
@@ -244,11 +244,27 @@ class _BookingPageState extends State<BookingPage>
 
               SizedBox(height: 12),
 
-              _buildDetailItem(
-                Icons.airline_seat_recline_normal,
-                "Seats",
-                seats,
-                Colors.indigo.shade600,
+              // Seats and Van License in the same row
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildDetailItem(
+                      Icons.airline_seat_recline_normal,
+                      "Seats",
+                      seats,
+                      Colors.indigo.shade600,
+                    ),
+                  ),
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: _buildDetailItem(
+                      Icons.directions_bus,
+                      "Van",
+                      vanLicense,
+                      Colors.blue.shade600,
+                    ),
+                  ),
+                ],
               ),
 
               SizedBox(height: 16),
@@ -260,10 +276,15 @@ class _BookingPageState extends State<BookingPage>
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () {
+                        // Add van license to data and navigate
+                        final enrichedData = Map<String, dynamic>.from(data);
+                        enrichedData['vanLicense'] = vanLicense;
+
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => BookingDetailPage(booking: data),
+                            builder: (_) =>
+                                BookingDetailPage(booking: enrichedData),
                           ),
                         );
                       },

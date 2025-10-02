@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config/stripe_config.dart';
+import '../pages/navigator_page.dart';
 
 class PaymentPage extends StatefulWidget {
   final String from;
@@ -90,7 +91,9 @@ class _PaymentPageState extends State<PaymentPage> {
   String _formatExpiryDate(String value) {
     value = value.replaceAll('/', '');
     if (value.length >= 2) {
-      return value.substring(0, 2) + '/' + value.substring(2, value.length > 4 ? 4 : value.length);
+      return value.substring(0, 2) +
+          '/' +
+          value.substring(2, value.length > 4 ? 4 : value.length);
     }
     return value;
   }
@@ -169,14 +172,18 @@ class _PaymentPageState extends State<PaymentPage> {
               errorMessage = 'Your card was declined';
               break;
             default:
-              errorMessage = data['error']['message'] ?? 'Card validation failed';
+              errorMessage =
+                  data['error']['message'] ?? 'Card validation failed';
           }
         }
         return {'success': false, 'error': errorMessage};
       }
     } catch (e) {
       print('Network error: $e');
-      return {'success': false, 'error': 'Network error: Please check your connection'};
+      return {
+        'success': false,
+        'error': 'Network error: Please check your connection',
+      };
     }
   }
 
@@ -228,7 +235,7 @@ class _PaymentPageState extends State<PaymentPage> {
         setState(() {
           _isProcessing = false;
         });
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(validationResult['error']),
@@ -247,7 +254,6 @@ class _PaymentPageState extends State<PaymentPage> {
 
       // Show success dialog
       _showSuccessDialog(validationResult);
-
     } catch (e) {
       setState(() {
         _isProcessing = false;
@@ -269,7 +275,55 @@ class _PaymentPageState extends State<PaymentPage> {
     final now = Timestamp.now();
 
     if (widget.isUpdatingExisting && widget.existingBookingId != null) {
-      // Update existing booking
+      // Update existing booking - fetch driver info if not already stored
+      String vanLicense = 'N/A';
+      String driverPhone = 'N/A';
+      
+      // First check if the existing booking already has these details
+      final existingBooking = await FirebaseFirestore.instance
+          .collection('bookings')
+          .doc(widget.existingBookingId!)
+          .get();
+      
+      if (existingBooking.exists) {
+        final existingData = existingBooking.data();
+        vanLicense = existingData?['vanLicense'] ?? 'N/A';
+        driverPhone = existingData?['driverPhone'] ?? 'N/A';
+        
+        // If details are not stored, fetch them from schedule
+        if (vanLicense == 'N/A' || driverPhone == 'N/A') {
+          final scheduleId = existingData?['scheduleId'];
+          if (scheduleId != null) {
+            final scheduleDoc = await FirebaseFirestore.instance
+                .collection('schedules')
+                .doc(scheduleId)
+                .get();
+            
+            if (scheduleDoc.exists) {
+              final scheduleData = scheduleDoc.data();
+              vanLicense = scheduleData?['vanLicense'] ?? 'N/A';
+              
+              // Get driver phone from drivers collection using driverId
+              final driverId = scheduleData?['driverId'];
+              if (driverId != null) {
+                try {
+                  final driverDoc = await FirebaseFirestore.instance
+                      .collection('drivers')
+                      .doc(driverId)
+                      .get();
+                  
+                  if (driverDoc.exists) {
+                    driverPhone = driverDoc.data()?['phoneNumber'] ?? 'N/A';
+                  }
+                } catch (e) {
+                  print('Error fetching driver phone: $e');
+                }
+              }
+            }
+          }
+        }
+      }
+
       await FirebaseFirestore.instance
           .collection('bookings')
           .doc(widget.existingBookingId!)
@@ -284,6 +338,8 @@ class _PaymentPageState extends State<PaymentPage> {
             'cardBrand': validationResult['card_brand'],
             'cardLast4': validationResult['last4'],
             'stripePaymentMethodId': validationResult['payment_method_id'],
+            'vanLicense': vanLicense,
+            'driverPhone': driverPhone,
           });
 
       // Update schedule seatsTaken (only add the NEW seats)
@@ -292,8 +348,7 @@ class _PaymentPageState extends State<PaymentPage> {
       }
     } else {
       // Create new booking
-      final routeId =
-          "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
+      final routeId = "${widget.from.toLowerCase()}_${widget.to.toLowerCase()}";
       final formattedBookingDate =
           "${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}";
 
@@ -311,6 +366,28 @@ class _PaymentPageState extends State<PaymentPage> {
 
       final scheduleDoc = scheduleQuery.docs.first;
       final scheduleId = scheduleDoc.id;
+      final scheduleData = scheduleDoc.data();
+      
+      // Get van license from schedule
+      final vanLicense = scheduleData['vanLicense'] ?? 'N/A';
+      
+      // Get driver phone from drivers collection using driverId
+      String driverPhone = 'N/A';
+      final driverId = scheduleData['driverId'];
+      if (driverId != null) {
+        try {
+          final driverDoc = await FirebaseFirestore.instance
+              .collection('drivers')
+              .doc(driverId)
+              .get();
+          
+          if (driverDoc.exists) {
+            driverPhone = driverDoc.data()?['phoneNumber'] ?? 'N/A';
+          }
+        } catch (e) {
+          print('Error fetching driver phone: $e');
+        }
+      }
 
       // Create booking data
       final bookingData = {
@@ -332,6 +409,8 @@ class _PaymentPageState extends State<PaymentPage> {
         "cardBrand": validationResult['card_brand'],
         "cardLast4": validationResult['last4'],
         "stripePaymentMethodId": validationResult['payment_method_id'],
+        "vanLicense": vanLicense,
+        "driverPhone": driverPhone,
       };
 
       await FirebaseFirestore.instance.collection('bookings').add(bookingData);
@@ -400,7 +479,10 @@ class _PaymentPageState extends State<PaymentPage> {
                 widget.isUpdatingExisting
                     ? 'Your seats have been added successfully!'
                     : 'Your booking has been confirmed successfully!',
-                style: GoogleFonts.roboto(fontSize: 16, color: Colors.grey[600]),
+                style: GoogleFonts.roboto(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                ),
               ),
               SizedBox(height: 12),
               Container(
@@ -440,7 +522,11 @@ class _PaymentPageState extends State<PaymentPage> {
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                Navigator.popUntil(context, (route) => route.isFirst);
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (context) => const MainScaffold()),
+                  (route) => false,
+                );
               },
               style: TextButton.styleFrom(
                 backgroundColor: Color.fromRGBO(78, 78, 148, 1),
@@ -471,10 +557,7 @@ class _PaymentPageState extends State<PaymentPage> {
       appBar: AppBar(
         title: Text(
           'Payment',
-          style: GoogleFonts.roboto(
-            color: Colors.black87,
-            fontSize: 20,
-          ),
+          style: GoogleFonts.roboto(color: Colors.black87, fontSize: 20),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -521,7 +604,10 @@ class _PaymentPageState extends State<PaymentPage> {
                           ],
                         ),
                         SizedBox(height: 16),
-                        _buildSummaryRow('Route', '${widget.from} → ${widget.to}'),
+                        _buildSummaryRow(
+                          'Route',
+                          '${widget.from} → ${widget.to}',
+                        ),
                         _buildSummaryRow('Date', formattedDate),
                         _buildSummaryRow('Time', widget.time),
                         _buildSummaryRow(
@@ -748,13 +834,15 @@ class _PaymentPageState extends State<PaymentPage> {
       obscureText: obscureText,
       maxLength: maxLength,
       style: TextStyle(fontSize: 16, color: Colors.black87),
-      onChanged: formatter != null ? (value) {
-        String formatted = formatter!(value);
-        controller.value = TextEditingValue(
-          text: formatted,
-          selection: TextSelection.collapsed(offset: formatted.length),
-        );
-      } : null,
+      onChanged: formatter != null
+          ? (value) {
+              String formatted = formatter!(value);
+              controller.value = TextEditingValue(
+                text: formatted,
+                selection: TextSelection.collapsed(offset: formatted.length),
+              );
+            }
+          : null,
       decoration: InputDecoration(
         labelText: label,
         hintText: hintText,
